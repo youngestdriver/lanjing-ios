@@ -1,0 +1,137 @@
+name: Release
+
+# 未签名 ipa 发布。题库包只在主仓 youngestdriver/lanjing_test 发布,本仓不
+# 分发;签名 ipa(ADHOC)暂未接入(短期不配证书),需要时参考主仓历史的
+# ios-ipa job 补回(secrets: IOS_CERT_BASE64 / IOS_CERT_PASSWORD /
+# IOS_PROVISIONING_BASE64 / DEVELOPMENT_TEAM)。
+#
+# 手动:gh workflow run release-ios.yml -f version=v1.0.0
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号,如 v1.0.0(留空自动 +1 patch)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute release version
+        id: compute
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            latest=$(git tag --sort=-v:refname | head -1)
+            [ -z "$latest" ] && latest="v0.0.0"
+            next=$(echo "$latest" | awk -F. '{printf "v%d.%d.%d", $1+0, $2+0, $3+1}')
+            echo "version=$next" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Release version: $(grep '^version=' "$GITHUB_OUTPUT" | cut -d= -f2)"
+
+  ios-unsigned:
+    name: iOS 未签名 ipa
+    needs: version
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Build Release without code signing
+        run: |
+          xcodebuild build \
+            -project LanjingQuiz.xcodeproj \
+            -scheme LanjingQuiz \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/unsigned-dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
+      - name: Package unsigned ipa and install notes
+        run: |
+          app="$RUNNER_TEMP/unsigned-dd/Build/Products/Release-iphoneos/LanjingQuiz.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::未找到构建产物 $app"
+            exit 1
+          fi
+          pkg="$RUNNER_TEMP/assets"
+          mkdir -p "$pkg/Payload"
+          cp -R "$app" "$pkg/Payload/"
+          cd "$pkg"
+          zip -r -q "LanjingQuiz-unsigned-${{ needs.version.outputs.version }}.ipa" Payload
+          # ASCII filename on purpose: upload/download-artifact mangles
+          # non-ASCII names through the artifact backend.
+          cat > "ipa-install-notes.txt" <<'EOF'
+          未签名 ipa(LanjingQuiz-unsigned-*.ipa)不能直接安装。它没有签名,
+          需要用免费工具 + 你自己的 Apple ID 签名后装到真机(每 7 天重新签名一次):
+
+          1. 下载 Sideloadly(https://sideloadly.io,macOS/Windows)或 AltStore;
+          2. iPhone 连接电脑并解锁;
+          3. Sideloadly 中选择本 ipa,填入你的 Apple ID 和密码(仅用于签名,
+             官方工具本地处理,不上传);
+          4. 点击 Start;完成后到手机:设置 → 通用 → VPN 与设备管理 →
+             开发者 App → 信任;
+          5. 信任后即可使用;7 天后过期需重新签名。
+
+          题库包不随本发布分发,请到主仓发布页下载:
+          https://github.com/youngestdriver/lanjing_test/releases
+          下载 LanjingQuiz-bank-*.zip 后,在 App 内「我的 > 题库 > 导入题库」导入。
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned
+          path: "${{ runner.temp }}/assets"
+          if-no-files-found: error
+
+  release:
+    name: 创建 Release
+    needs: [version, ios-unsigned]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: "${{ runner.temp }}/assets"
+          merge-multiple: true
+
+      - name: Create GitHub Release with assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=()
+          for f in "${{ runner.temp }}"/assets/*; do
+            [ -f "$f" ] && assets+=("$f")
+          done
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::没有可发布的产物"
+            exit 1
+          fi
+          gh release create "${{ needs.version.outputs.version }}" \
+            "${assets[@]}" \
+            --title "蓝鲸助手 iOS ${{ needs.version.outputs.version }}" \
+            --generate-notes \
+            --repo "${{ github.repository }}"
+          echo "Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.version.outputs.version }}"
