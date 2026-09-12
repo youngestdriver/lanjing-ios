@@ -40,7 +40,8 @@ jobs:
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
             latest=$(git tag --sort=-v:refname | head -1)
-            [ -z "$latest" ] && latest="v0.0.0"
+            latest="${latest#v}"
+            [ -z "$latest" ] && latest="0.0.0"
             next=$(echo "$latest" | awk -F. '{printf "v%d.%d.%d", $1+0, $2+0, $3+1}')
             echo "version=$next" >> "$GITHUB_OUTPUT"
           fi
@@ -85,8 +86,8 @@ jobs:
 
           1. 下载 Sideloadly(https://sideloadly.io,macOS/Windows)或 AltStore;
           2. iPhone 连接电脑并解锁;
-          3. Sideloadly 中选择本 ipa,填入你的 Apple ID 和密码(仅用于签名,
-             官方工具本地处理,不上传);
+          3. Sideloadly 中选择本 ipa,填入你的 Apple ID 和密码(凭据用于向 Apple
+             申请签名证书;Sideloadly 是第三方工具,请自行评估安全性);
           4. 点击 Start;完成后到手机:设置 → 通用 → VPN 与设备管理 →
              开发者 App → 信任;
           5. 信任后即可使用;7 天后过期需重新签名。
