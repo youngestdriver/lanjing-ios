@@ -1,7 +1,7 @@
 import XCTest
 @testable import LanjingQuiz
 
-/// Ported from apps/bank/test/question-classifier.test.js — the JS suite
+/// Ported from the main repo's test/question-classifier.test.js — the JS suite
 /// stays the source of truth; mirror any rule changes in both.
 final class QuestionClassifierTests: XCTestCase {
 

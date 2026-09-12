@@ -5,8 +5,9 @@ import XCTest
 /// 可达性影响)。
 ///
 /// 题库包是本机数据(含上游 IP),不随仓库分发,所以找不到产物时跳过而不是
-/// 失败;跑之前在主仓(`lanjing_test` 的 `apps/bank`)`npm run snapshot` 生成,
-/// 再用 LANJING_BANK_DATA 指向它,或把包放进本仓根的 bank-data/。
+/// 失败;跑之前在主仓(`lanjing_test` 根目录)跑 `npm run snapshot` 生成(默认
+/// 输出到主仓 `data/`),再用 LANJING_BANK_DATA 指向它,或把包放进本仓根的
+/// bank-data/。
 final class BankImportUITests: XCTestCase {
 
     /// 题库包所在目录里最近一次 snapshot 的产物(按文件名倒序取最新一个)。
@@ -22,7 +23,7 @@ final class BankImportUITests: XCTestCase {
                 .appendingPathComponent("bank-data"),
         ]
         for directory in candidates.compactMap({ $0 }) {
-            // 目录本身可能是符号链接(比如 bank-data -> 主仓 apps/bank/data);
+            // 目录本身可能是符号链接(比如 bank-data -> 主仓 data/);
             // contentsOfDirectory(at:) 不跟随目录符号链接(ENOTDIR),先解掉。
             let files = (try? FileManager.default.contentsOfDirectory(
                 at: directory.resolvingSymlinksInPath(), includingPropertiesForKeys: nil
@@ -43,7 +44,7 @@ final class BankImportUITests: XCTestCase {
     @MainActor
     func testOfflineBankImportServesPracticeWithoutNetwork() throws {
         guard let package = Self.snapshotPackageURL() else {
-            throw XCTSkip("没有题库包产物 —— 主仓 apps/bank 跑 npm run snapshot,再用 LANJING_BANK_DATA 指向输出目录")
+            throw XCTSkip("没有题库包产物 —— 主仓(lanjing_test 根目录)跑 npm run snapshot,默认输出 data/,再用 LANJING_BANK_DATA 指向它,或把包放进本仓根的 bank-data/")
         }
         continueAfterFailure = false
 

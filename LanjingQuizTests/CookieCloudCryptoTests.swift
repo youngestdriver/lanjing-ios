@@ -1,7 +1,7 @@
 import XCTest
 @testable import LanjingQuiz
 
-/// Same hardcoded interop vectors as apps/web/test/cookiecloud.test.js,
+/// Same hardcoded interop vectors as the lanjing-web repo's test/cookiecloud.test.js,
 /// generated with the official extension's crypto-js implementation and
 /// cross-checked against openssl. The two clients must agree byte-for-byte
 /// with the browser extension; each platform keeps its own fixture copy.

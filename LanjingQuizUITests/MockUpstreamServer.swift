@@ -6,7 +6,7 @@ import Network
 /// The app is pointed at it via the LANJING_BASE_URL launch environment; every
 /// request is recorded for assertions.
 ///
-/// Routes mirror the shapes verified against apps/bank/test fixtures and the
+/// Routes mirror the shapes verified against the main repo's test fixtures and the
 /// iOS DTOs — note the numeric exam ids (ExamDTO.id is Int):
 ///   GET  /login/account/login/1   → login page + Set-Cookie JSESSIONID
 ///   POST /login/account/login     → {"code":10000,"success":true} + sessionId

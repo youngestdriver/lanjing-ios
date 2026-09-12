@@ -1,7 +1,7 @@
 import XCTest
 @testable import LanjingQuiz
 
-/// Practice mapping helpers (ports of apps/bank/lib/question-bank.js):
+/// Practice mapping helpers (ports of the main repo's lib/question-bank.js):
 /// paper filtering, section cleaning, state join and DTO → BankQuestion.
 final class PracticeUpstreamMappingTests: XCTestCase {
 

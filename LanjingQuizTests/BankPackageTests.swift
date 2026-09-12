@@ -425,7 +425,7 @@ final class BankPackageTests: XCTestCase {
         ]
         var snapshot: URL?
         for directory in candidates.compactMap({ $0 }) {
-            // 目录本身可能是符号链接(比如 bank-data -> 主仓 apps/bank/data);
+            // 目录本身可能是符号链接(比如 bank-data -> 主仓 data/);
             // contentsOfDirectory(at:) 不跟随目录符号链接(ENOTDIR),先解掉。
             snapshot = (try? FileManager.default.contentsOfDirectory(
                 at: directory.resolvingSymlinksInPath(), includingPropertiesForKeys: nil
@@ -436,7 +436,7 @@ final class BankPackageTests: XCTestCase {
             if snapshot != nil { break }
         }
         guard let snapshot else {
-            throw XCTSkip("没有题库包产物 —— 主仓 apps/bank 跑 npm run snapshot,再用 LANJING_BANK_DATA 指向输出目录,或把包放进本仓根的 bank-data/")
+            throw XCTSkip("没有题库包产物 —— 主仓(lanjing_test 根目录)跑 npm run snapshot,默认输出 data/,再用 LANJING_BANK_DATA 指向它,或把包放进本仓根的 bank-data/")
         }
 
         let package = try BankPackage(url: snapshot)
@@ -608,7 +608,7 @@ private func recordCount(_ data: Data) -> Int {
         .count
 }
 
-/// 与 apps/bank/lib/snapshot.js 的 detectMime 同规则(测试侧独立实现)。
+/// 与主仓 lib/snapshot.js 的 detectMime 同规则(测试侧独立实现)。
 private func mimeType(of data: Data) -> String {
     if data.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "image/png" }
     if data.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }

@@ -110,7 +110,7 @@ final class BankModelTests: XCTestCase {
     }
 
     func testDecodesCollectorFormatLine() throws {
-        // A hand-written line in apps/bank/data format (round/collectedAt
+        // A hand-written line in the main repo's data/ format (round/collectedAt
         // present, answer as array).
         let line = """
         {"_id":"q9","category":"言语理解","section":"逻辑填空","subCategory":"成语辨析",\

@@ -1,6 +1,6 @@
 # LanjingQuiz iOS
 
-`LanjingQuiz` is the native iOS client for the Lanjing Weike quiz platform. It is a SwiftUI rewrite of the web workflow and communicates directly with the upstream service; it does not require `apps/web/server.js` to run.
+`LanjingQuiz` is the native iOS client for the Lanjing Weike quiz platform. It is a SwiftUI rewrite of the web workflow and communicates directly with the upstream service; it does not require the web client's `server.js` (separate `lanjing-web` repo) to run.
 
 ## Requirements
 
@@ -57,10 +57,10 @@ xcodebuild -project LanjingQuiz.xcodeproj -scheme LanjingQuiz -showdestinations
 
 `BankPackageTests.testRealSnapshotPackageWhenPresent` and the bank import UI test exercise a real `LanjingQuiz-bank-*.zip` snapshot. When no package is found they do not fail — they skip silently, so a green run can mean "not covered". Three ways to point the tests at one:
 
-1. **Repo-root `bank-data/` (recommended locally).** When `LANJING_BANK_DATA` is unset, the tests fall back to `<repo root>/bank-data`. The main repo clone's `apps/bank/data` already holds a `lanjing-bank-*.zip` snapshot (the most recent one), so symlinking it is enough (the directory is gitignored):
+1. **Repo-root `bank-data/` (recommended locally).** When `LANJING_BANK_DATA` is unset, the tests fall back to `<repo root>/bank-data`. The main repo clone's `data/` (repository root) already holds a `lanjing-bank-*.zip` snapshot (the most recent one), so symlinking it is enough (the directory is gitignored):
 
    ```sh
-   ln -s /path/to/lanjing_test/apps/bank/data bank-data
+   ln -s /path/to/lanjing_test/data bank-data
    ```
 
 2. **Environment variable through `xcodebuild`.** A plain shell variable does **not** reach the test process — `LANJING_BANK_DATA=... xcodebuild test` looks like it works but the tests see nothing and skip silently. xcodebuild only forwards variables prefixed with `TEST_RUNNER_` (the prefix is stripped before the test process sees it):
@@ -82,7 +82,7 @@ Bank packages (`LanjingQuiz-bank-*.zip`) are distributed from the main repo's re
 After sign-in, the root screen has three native tabs:
 
 - **Exam List**: The default tab. It groups available exams and supports starting a new exam or resuming an active one.
-- **Practice**: On first use the app **crawls the whole 机考题库 directly from the upstream platform** (every paper, questions with answer keys + 解析) and stores it locally — one JSONL file per category, same format as the collector's `apps/bank/data`, with per-paper crawl progress in `meta.json` so an interrupted crawl resumes without re-entering papers. Practice then aggregates the local bank by 一级分类 (大类) → 二级分类 (题型细分, classified locally by the rule engine ported from `apps/bank/lib/question-classifier.js`) and runs entirely offline. Answers are graded **locally and never submitted upstream**; crawling a 新开 (wfs=1) paper creates a real upstream attempt that is best-effort-ended after fetching, while 进行中 (wfs=0) papers are read-only and never ended. Practice requires a login session; 我的 > 更新题库 re-crawls **every** paper and atomically replaces the local bank (the old bank stays intact if the refresh fails).
+- **Practice**: On first use the app **crawls the whole 机考题库 directly from the upstream platform** (every paper, questions with answer keys + 解析) and stores it locally — one JSONL file per category, same format as the main repo's `data/`, with per-paper crawl progress in `meta.json` so an interrupted crawl resumes without re-entering papers. Practice then aggregates the local bank by 一级分类 (大类) → 二级分类 (题型细分, classified locally by the rule engine ported from the main repo's `lib/question-classifier.js`) and runs entirely offline. Answers are graded **locally and never submitted upstream**; crawling a 新开 (wfs=1) paper creates a real upstream attempt that is best-effort-ended after fetching, while 进行中 (wfs=0) papers are read-only and never ended. Practice requires a login session; 我的 > 更新题库 re-crawls **every** paper and atomically replaces the local bank (the old bank stays intact if the refresh fails).
 - **Me**: Theme selection and sign-out.
 
 On iOS 26 and later, the system-provided `TabView` automatically uses Apple's Liquid Glass tab bar. Earlier supported iOS releases use the system tab bar appearance for their platform version.
