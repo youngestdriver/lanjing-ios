@@ -7,6 +7,9 @@ name: Release
 #
 # 手动:gh workflow run release-ios.yml -f version=v1.0.0
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
