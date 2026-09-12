@@ -57,10 +57,10 @@ xcodebuild -project LanjingQuiz.xcodeproj -scheme LanjingQuiz -showdestinations
 
 `BankPackageTests.testRealSnapshotPackageWhenPresent` and the bank import UI test exercise a real `LanjingQuiz-bank-*.zip` snapshot. When no package is found they do not fail — they skip silently, so a green run can mean "not covered". Three ways to point the tests at one:
 
-1. **Repo-root `bank-data/` (recommended locally).** When `LANJING_BANK_DATA` is unset, the tests fall back to `<repo root>/bank-data`. The collector's data directory already contains `lanjing-bank-20260910.zip`, so symlinking it is enough (the directory is gitignored):
+1. **Repo-root `bank-data/` (recommended locally).** When `LANJING_BANK_DATA` is unset, the tests fall back to `<repo root>/bank-data`. The main repo clone's `apps/bank/data` already holds a `lanjing-bank-*.zip` snapshot (the most recent one), so symlinking it is enough (the directory is gitignored):
 
    ```sh
-   ln -s /Users/qzh/Project/lanjing_test/apps/bank/data bank-data
+   ln -s /path/to/lanjing_test/apps/bank/data bank-data
    ```
 
 2. **Environment variable through `xcodebuild`.** A plain shell variable does **not** reach the test process — `LANJING_BANK_DATA=... xcodebuild test` looks like it works but the tests see nothing and skip silently. xcodebuild only forwards variables prefixed with `TEST_RUNNER_` (the prefix is stripped before the test process sees it):
