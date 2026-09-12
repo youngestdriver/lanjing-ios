@@ -1,0 +1,12 @@
+# iOS 构建产物
+build/
+dist/
+*.ipa
+*.xcuserstate
+**/xcuserdata/
+
+# 本地题库数据（含上游 IP，不入库）
+bank-data/
+
+# OS
+.DS_Store
