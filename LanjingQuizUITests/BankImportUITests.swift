@@ -4,32 +4,46 @@ import XCTest
 /// 把练习环境拉起来 —— 这正是这个功能存在的理由(自测/测试不受网络与上游
 /// 可达性影响)。
 ///
-/// 题库包是本机数据(`apps/bank/data` 在 .gitignore 里,含上游 IP),不随仓库
-/// 分发,所以找不到产物时跳过而不是失败;跑之前先 `cd apps/bank && npm run
-/// snapshot` 生成。
+/// 题库包是本机数据(含上游 IP),不随仓库分发,所以找不到产物时跳过而不是
+/// 失败;跑之前在主仓(`lanjing_test` 的 `apps/bank`)`npm run snapshot` 生成,
+/// 再用 LANJING_BANK_DATA 指向它,或把包放进本仓根的 bank-data/。
 final class BankImportUITests: XCTestCase {
 
-    /// 仓库根下最近一次 snapshot 的产物(按文件名倒序取最新一个)。
+    /// 题库包所在目录里最近一次 snapshot 的产物(按文件名倒序取最新一个)。
+    /// 拆仓后不再依赖主仓的目录层级:优先 LANJING_BANK_DATA,其次本仓根
+    /// 的 bank-data/。
     private static func snapshotPackageURL() -> URL? {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // LanjingQuizUITests/
-            .deletingLastPathComponent()   // apps/ios/
-            .deletingLastPathComponent()   // apps/
-            .deletingLastPathComponent()   // 仓库根
-        let directory = repoRoot.appendingPathComponent("apps/bank/data")
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil
-        )) ?? []
-        return files
-            .filter { $0.lastPathComponent.hasPrefix("lanjing-bank-") && $0.pathExtension == "zip" }
-            .sorted { $0.lastPathComponent > $1.lastPathComponent }
-            .first
+        let candidates: [URL?] = [
+            ProcessInfo.processInfo.environment["LANJING_BANK_DATA"]
+                .map { URL(fileURLWithPath: $0) },
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()   // LanjingQuizUITests/
+                .deletingLastPathComponent()   // 仓库根
+                .appendingPathComponent("bank-data"),
+        ]
+        for directory in candidates.compactMap({ $0 }) {
+            // 目录本身可能是符号链接(比如 bank-data -> 主仓 apps/bank/data);
+            // contentsOfDirectory(at:) 不跟随目录符号链接(ENOTDIR),先解掉。
+            let files = (try? FileManager.default.contentsOfDirectory(
+                at: directory.resolvingSymlinksInPath(), includingPropertiesForKeys: nil
+            )) ?? []
+            // 注意:不能写成 `if let package = files.filter { … }.first { … }` ——
+            // 条件位置里的尾随闭包会被解析成 if 的函数体,编译不过。
+            let package = files
+                .filter { $0.lastPathComponent.hasPrefix("lanjing-bank-") && $0.pathExtension == "zip" }
+                .sorted(by: { $0.lastPathComponent > $1.lastPathComponent })
+                .first
+            if let package {
+                return package
+            }
+        }
+        return nil
     }
 
     @MainActor
     func testOfflineBankImportServesPracticeWithoutNetwork() throws {
         guard let package = Self.snapshotPackageURL() else {
-            throw XCTSkip("没有题库包产物 —— 先跑 cd apps/bank && npm run snapshot")
+            throw XCTSkip("没有题库包产物 —— 主仓 apps/bank 跑 npm run snapshot,再用 LANJING_BANK_DATA 指向输出目录")
         }
         continueAfterFailure = false
 

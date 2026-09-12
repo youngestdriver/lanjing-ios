@@ -411,22 +411,32 @@ final class BankPackageTests: XCTestCase {
 
     // MARK: - 真实产物
 
-    /// 真包验证:apps/bank/data/lanjing-bank-*.zip(snapshot.js 的产物)。产物不在
-    /// (比如没跑过打包脚本)就跳过 —— 这条的价值全在「真包能过」,拿自造夹具冒充
-    /// 没有意义。
+    /// 真包验证:LANJING_BANK_DATA 指向的目录或本仓根 bank-data/ 下的
+    /// lanjing-bank-*.zip(snapshot.js 的产物)。产物不在(比如没跑过打包脚本)就
+    /// 跳过 —— 这条的价值全在「真包能过」,拿自造夹具冒充没有意义。
     func testRealSnapshotPackageWhenPresent() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)   // …/apps/ios/LanjingQuizTests/BankPackageTests.swift
-            .deletingLastPathComponent()                 // …/apps/ios/LanjingQuizTests
-            .deletingLastPathComponent()                 // …/apps/ios
-            .deletingLastPathComponent()                 // …/apps
-            .deletingLastPathComponent()                 // 仓库根
-        let dataDirectory = repoRoot.appendingPathComponent("apps/bank/data")
-        let snapshot = (try? FileManager.default.contentsOfDirectory(at: dataDirectory, includingPropertiesForKeys: nil))?
-            .filter { $0.lastPathComponent.hasPrefix("lanjing-bank-") && $0.pathExtension == "zip" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            .last
+        let candidates: [URL?] = [
+            ProcessInfo.processInfo.environment["LANJING_BANK_DATA"]
+                .map { URL(fileURLWithPath: $0) },
+            URL(fileURLWithPath: #filePath)                // …/LanjingQuizTests/BankPackageTests.swift
+                .deletingLastPathComponent()               // …/LanjingQuizTests
+                .deletingLastPathComponent()               // 仓库根
+                .appendingPathComponent("bank-data"),
+        ]
+        var snapshot: URL?
+        for directory in candidates.compactMap({ $0 }) {
+            // 目录本身可能是符号链接(比如 bank-data -> 主仓 apps/bank/data);
+            // contentsOfDirectory(at:) 不跟随目录符号链接(ENOTDIR),先解掉。
+            snapshot = (try? FileManager.default.contentsOfDirectory(
+                at: directory.resolvingSymlinksInPath(), includingPropertiesForKeys: nil
+            ))?
+                .filter { $0.lastPathComponent.hasPrefix("lanjing-bank-") && $0.pathExtension == "zip" }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+                .last
+            if snapshot != nil { break }
+        }
         guard let snapshot else {
-            throw XCTSkip("apps/bank/data 下没有 lanjing-bank-*.zip,跳过真实产物验证")
+            throw XCTSkip("没有题库包产物 —— 主仓 apps/bank 跑 npm run snapshot,再用 LANJING_BANK_DATA 指向输出目录,或把包放进本仓根的 bank-data/")
         }
 
         let package = try BankPackage(url: snapshot)
