@@ -98,7 +98,7 @@ After a confirmed upstream completion, the app immediately hides the old active-
 ## Project Layout
 
 ```text
-apps/ios/
+lanjing-ios/                     Repository root
 ├── LanjingQuiz.xcodeproj/       Xcode project
 ├── LanjingQuiz/
 │   ├── App/                     App entry point, route and theme state
@@ -108,6 +108,7 @@ apps/ios/
 │   ├── ViewModels/              Login, exam-list and quiz state
 │   └── Views/                   SwiftUI screens and reusable view components
 ├── LanjingQuizTests/            Unit tests and fixtures
+├── LanjingQuizUITests/          UI tests with an in-process mock upstream
 └── project.yml                  XcodeGen project definition
 ```
 
@@ -121,9 +122,9 @@ Network calls mirror the upstream login, exam-list, enter, answer, mark, submit,
 
 ## Verification
 
-The `LanjingQuizTests` target currently contains 185 unit tests covering answer mapping, exam and result parsing, session expiry detection, login form encoding, rich HTML content, hashing, quiz logic, CookieCloud crypto/conversion (same interop vectors as the web client), the practice 题型细分 classifier (ported from the collector's rule engine), the practice-upstream mapping (paper filtering, section cleaning, state join, DTO → question), and the local bank persistence (incremental append, meta with per-paper crawl progress, JSONL encode/decode round trip in the collector's format).
+The `LanjingQuizTests` target currently contains 253 unit tests covering answer mapping, exam and result parsing, session expiry detection, login form encoding, rich HTML content, hashing, quiz logic, CookieCloud crypto/conversion (same interop vectors as the web client), the practice 题型细分 classifier (ported from the collector's rule engine), the practice-upstream mapping (paper filtering, section cleaning, state join, DTO → question), and the local bank persistence (incremental append, meta with per-paper crawl progress, JSONL encode/decode round trip in the collector's format).
 
-The UI test (`LanjingQuizUITests`) runs the whole crawl-and-practice flow end-to-end against an in-process mock upstream (`MockUpstreamServer`, selected via the `LANJING_BASE_URL` launch environment; the local bank is wiped via the `-reset-bank` launch argument so the crawl runs on every execution) — it is hermetic and requires no local server.
+The 8 UI tests in `LanjingQuizUITests` run the whole crawl-and-practice flow end-to-end against an in-process mock upstream (`MockUpstreamServer`, selected via the `LANJING_BASE_URL` launch environment; the local bank is wiped via the `-reset-bank` launch argument so the crawl runs on every execution) — it is hermetic and requires no local server.
 
 Before delivering a change, build `LanjingQuiz`, run the test target, and validate affected user flows on a simulator or a signed physical device. Confirming **Abandon** has a real upstream effect, so do not use it as an unattended smoke test.
 
