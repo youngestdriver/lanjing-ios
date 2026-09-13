@@ -125,6 +125,23 @@ final class PracticeBankViewModelTests: XCTestCase {
         return db
     }
 
+    // MARK: - 错题收录(统一漏斗)helpers
+
+    /// 等进度落盘最多 1000 次让步。FakePracticeProgressStore.awaitSaveCount 是
+    /// 无界死等,红态(该写没写)下会把失败变成挂起 —— 断言新写入的用例用有界版。
+    private func waitForProgressSaves(_ store: FakePracticeProgressStore, atLeast target: Int) async {
+        for _ in 0 ..< 1000 {
+            if await store.saveCount >= target { return }
+            await Task.yield()
+        }
+    }
+
+    /// 读注册表里 成语辨析 条目的某题错题记录(未记录 = nil)。
+    private func wrongRecord(_ store: FakePracticeProgressStore, id: String) async -> WrongRecord? {
+        let stored = await store.stored
+        return stored?["言语理解/成语辨析"]?.wrong?[id]
+    }
+
     // MARK: - tapOption (问题 2 regression pins)
 
     /// Regression pin for 问题 2 (选错选项没有标红): the selected letter must be
@@ -489,5 +506,192 @@ final class PracticeBankViewModelTests: XCTestCase {
         vm.bankWasDeleted()
         XCTAssertEqual(vm.answeredCount(category: "言语理解"), 0)
         await progressStore.awaitClearCount(1)
+    }
+
+    // MARK: - 错题收录(统一漏斗:单选/多选两处判分点共用)
+
+    func testSingleWrongRecordsWrongRecordAndPersists() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A") // q1 答案 B → 答错
+        await progressStore.awaitSaveCount(1)
+
+        let fetched = await wrongRecord(progressStore, id: "q1")
+        let record = try XCTUnwrap(fetched)
+        XCTAssertEqual(record.selected, ["A"])
+        XCTAssertEqual(record.wrongCount, 1)
+        XCTAssertLessThan(abs(record.lastWrongAt.timeIntervalSinceNow), 5, "lastWrongAt 应为本次答错时间")
+        XCTAssertEqual(record.summary, "题干 q1", "摘要取题干 HTML 的纯文本")
+        let saved = await progressStore.stored
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q1"], "已答登记不受影响")
+    }
+
+    /// 同题再答错 → latest-wins upsert:(previous?.wrongCount ?? 0) + 1 累计、
+    /// selected 覆盖为本次所选、lastWrongAt 刷新为本次 —— 真正执行累计分支的用例。
+    /// 既有记录刻意选 B(≠ 本次所选的 A),实现若只保留旧值,断言会抓到。
+    func testSameQuestionWrongAgainLatestWins() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        // 既有记录的 lastWrongAt 在一小时前;刷新断言必须抓到它被挪到「现在」。
+        let earlier = Date(timeIntervalSinceNow: -3600)
+        try await progressStore.save([
+            "言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q1"],
+                wrong: ["q1": WrongRecord(selected: ["B"], wrongCount: 2,
+                                          lastWrongAt: earlier, summary: "旧摘要")]
+            ),
+        ])
+        let baseline = await progressStore.saveCount
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A") // q1 答案 B → 再答错,覆盖既有记录
+
+        await waitForProgressSaves(progressStore, atLeast: baseline + 1)
+        let fetched = await wrongRecord(progressStore, id: "q1")
+        let record = try XCTUnwrap(fetched)
+        XCTAssertEqual(record.selected, ["A"], "latest-wins:selected 覆盖为本次所选")
+        XCTAssertEqual(record.wrongCount, 3, "同题再错累计 +1(既有 2 → 3)")
+        XCTAssertLessThan(abs(record.lastWrongAt.timeIntervalSinceNow), 5, "lastWrongAt 刷新为本次答错时间")
+    }
+
+    /// 头号陷阱:上一轮答过(answeredIDs 已含该题)、本次新会话答错 —— 错题写入
+    /// 绝不能嵌在 `!answeredIDs.contains(id)` 守卫内,否则静默漏记且不落盘。
+    func testWrongAfterPreviouslyAnsweredStillRecordsAndPersists() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        try await progressStore.save(["言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1"])])
+        let baseline = await progressStore.saveCount
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A") // 已答过 q1,本次答错 → 必须记录并落盘
+
+        await waitForProgressSaves(progressStore, atLeast: baseline + 1)
+        let fetched = await wrongRecord(progressStore, id: "q1")
+        let record = try XCTUnwrap(fetched, "answeredIDs 已含该题时答错必须仍写错题记录")
+        XCTAssertEqual(record.wrongCount, 1)
+        XCTAssertEqual(record.selected, ["A"])
+        let saved = await progressStore.stored
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q1"], "answeredIDs 不重复登记")
+    }
+
+    func testRepeatTapOnRevealedQuestionDoesNotDoubleCount() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A") // 答错 → 第 1 次
+        vm.tapOption("A") // 已揭晓题的重复 tap → 只刷新显示,不再登记
+        await progressStore.awaitSaveCount(1)
+        await waitForProgressSaves(progressStore, atLeast: 2) // 若误写第二次,这里等得到
+        let saveCount = await progressStore.saveCount
+        XCTAssertEqual(saveCount, 1, "重复 tap 不得产生第二次进度落盘")
+        let fetched = await wrongRecord(progressStore, id: "q1")
+        let record = try XCTUnwrap(fetched)
+        XCTAssertEqual(record.wrongCount, 1, "重复 tap 不得累计 wrongCount")
+        XCTAssertEqual(vm.answeredCount(category: "言语理解", subCategory: "成语辨析"), 1)
+    }
+
+    /// 多选三种错法(少选/多选/全错)都判错,并按本次所选入账。
+    func testMultiConfirmWrongRecordsLatestSelection() async throws {
+        let cases: [(taps: [String], expected: [String])] = [
+            (["A"], ["A"]),                     // 少选(漏 C)
+            (["A", "B", "C"], ["A", "B", "C"]), // 多选(混入 B)
+            (["B", "D"], ["B", "D"]),           // 全错
+        ]
+        for testCase in cases {
+            let storage = FakeBankStorage()
+            storage.categoryTexts = categoryTexts()
+            let store = FakePracticeSessionStore()
+            let progressStore = FakePracticeProgressStore()
+            let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+            await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+            vm.nextQuestion()
+            vm.nextQuestion() // → q3 多选(答案 A+C)
+            for letter in testCase.taps { vm.tapOption(letter) }
+            vm.confirmSelection()
+
+            await progressStore.awaitSaveCount(1)
+            let fetched = await wrongRecord(progressStore, id: "q3")
+            let record = try XCTUnwrap(fetched, "taps=\(testCase.taps)")
+            XCTAssertEqual(record.selected, testCase.expected.sorted(), "taps=\(testCase.taps)")
+            XCTAssertEqual(record.wrongCount, 1, "taps=\(testCase.taps)")
+        }
+    }
+
+    func testUngradableAnswerRecordsAnsweredButNoWrong() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A") // q1 答错
+        vm.nextQuestion()
+        vm.tapOption("A") // q2 无答案:揭晓但不判分
+        await progressStore.awaitSaveCount(2)
+
+        let fetched = await wrongRecord(progressStore, id: "q2")
+        XCTAssertNil(fetched, "无答案题永不进错题本")
+        let saved = await progressStore.stored
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q1", "q2"], "无答案题仍计已答")
+    }
+
+    /// 无既有错题记录时答对 → 只登记 answeredIDs,不凭空新增 wrong 键;
+    /// 防止「答对也写错题」形态的回归(该路径唯一的写入就是已答登记)。
+    func testCorrectWithNoRecordWritesNothing() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("B") // q1 正确答案,且此前没有任何错题记录
+        await progressStore.awaitSaveCount(1)
+
+        let fetched = await wrongRecord(progressStore, id: "q1")
+        XCTAssertNil(fetched, "无既有记录时答对不得写错题")
+        let saved = await progressStore.stored
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.wrong ?? [:], [:], "wrong 仍为空,不新增键")
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q1"], "答对仍正常登记已答")
+    }
+
+    func testPendingMultiSelectionNeverRecordsAnsweredOrWrong() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.nextQuestion()
+        vm.nextQuestion() // → q3 多选
+        vm.tapOption("A")
+        vm.tapOption("C")
+        await waitForProgressSaves(progressStore, atLeast: 1) // 若误写,这里等得到
+
+        let saveCount = await progressStore.saveCount
+        XCTAssertEqual(saveCount, 0, "未提交的多选不落盘")
+        let saved = await progressStore.stored
+        XCTAssertNil(saved)
+        let fetched = await wrongRecord(progressStore, id: "q3")
+        XCTAssertNil(fetched)
+        XCTAssertNil(vm.session?.answers[2].correct)
     }
 }

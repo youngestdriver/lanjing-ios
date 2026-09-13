@@ -271,12 +271,15 @@ final class PracticeBankViewModel {
         let index = session.index
         let question = session.questions[index]
         var answer = session.answers[index]
+        // 置 revealed 之前捕获:已揭晓题的重复 tap 只刷新选项显示(既有行为),
+        // 不再经判分漏斗登记 —— 否则同题每重 tap 一次就多记一次错。
+        let wasRevealed = answer.revealed
         if !question.isGradable {
             // Unknown answer: tapping reveals without grading.
             answer.selected = [letter]
             answer.revealed = true
             answer.correct = nil
-            recordAnswered(question)
+            recordAnswered(question, correct: nil, selected: answer.selected)
         } else if question.isMulti {
             if answer.selected.contains(letter) {
                 answer.selected.remove(letter)
@@ -290,7 +293,9 @@ final class PracticeBankViewModel {
             answer.selected = [letter]
             answer.revealed = true
             answer.correct = BankLogic.grade(selected: answer.selected, question: question)
-            recordAnswered(question)
+            if !wasRevealed {
+                recordAnswered(question, correct: answer.correct, selected: answer.selected)
+            }
         }
         session.answers[index] = answer
         self.session = session
@@ -301,28 +306,56 @@ final class PracticeBankViewModel {
         guard var session, session.index < session.questions.count else { return }
         let index = session.index
         var answer = session.answers[index]
-        guard !answer.revealed, !answer.selected.isEmpty else { return }
+        guard !answer.revealed, !answer.selected.isEmpty else { return } // 未提交/已揭晓:永不判分
         let question = session.questions[index]
         answer.correct = BankLogic.grade(selected: answer.selected, question: question)
         answer.revealed = true
-        recordAnswered(question)
+        recordAnswered(question, correct: answer.correct, selected: answer.selected)
         session.answers[index] = answer
         self.session = session
         persist()
     }
 
-    /// 已揭晓答案的题目记入进度注册表(跨会话累计,不因随机顺序/重新进入而
-    /// 重复计算)。三种 reveal 路径共用:单选 tap、无答案 tap、多选 confirm。
-    private func recordAnswered(_ question: BankQuestion) {
+    /// 判分 + 登记的统一漏斗:练习两处判分点(单选 `tapOption` / 多选
+    /// `confirmSelection`)共用。**考试侧禁止接入** —— 「错题本只收练习」由
+    /// 结构保证。
+    ///
+    /// - `correct == false`:按题 latest-wins upsert 错题(选中项覆盖、错次 +1、
+    ///   时间刷新、摘要重采)。**写入不在 answeredIDs 去重守卫内** ——
+    ///   「上一轮答过、本次答错」时该守卫为 false,放进守卫里会静默漏记。
+    /// - `correct == nil`(无答案题):只登记已答,永不写错题。
+    /// - 多选未提交根本不进漏斗(`confirmSelection` 自带守卫)。
+    ///
+    /// 返回是否产生了新写入;`answeredChanged || wrongChanged` 时落盘一次快照。
+    @discardableResult
+    private func recordAnswered(_ question: BankQuestion, correct: Bool?, selected: Set<String>) -> Bool {
         let key = "\(question.category)/\(question.subCategory)"
         var entry = progress[key] ?? PracticeProgress()
+        var answeredChanged = false
         if !entry.answeredIDs.contains(question.id) {
             entry.answeredIDs.append(question.id)
-            progress[key] = entry
-            let snapshot = progress
-            let store = progressStore
-            Task { try? await store.save(snapshot) }
+            answeredChanged = true
         }
+        var wrongChanged = false
+        if correct == false {
+            // 错题 upsert(latest-wins):同题再错覆盖所选、累计次数、刷新时间。
+            var wrong = entry.wrong ?? [:]
+            let previous = wrong[question.id]
+            wrong[question.id] = WrongRecord(
+                selected: selected.sorted(),
+                wrongCount: (previous?.wrongCount ?? 0) + 1,
+                lastWrongAt: Date(),
+                summary: HTMLText.summary(from: question.question)
+            )
+            entry.wrong = wrong
+            wrongChanged = true
+        }
+        guard answeredChanged || wrongChanged else { return false }
+        progress[key] = entry
+        let snapshot = progress
+        let store = progressStore
+        Task { try? await store.save(snapshot) }
+        return true
     }
 
     // MARK: - 做题进度(需求 4)
