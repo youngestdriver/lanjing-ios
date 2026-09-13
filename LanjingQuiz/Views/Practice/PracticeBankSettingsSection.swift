@@ -11,7 +11,6 @@ import UniformTypeIdentifiers
 struct PracticeBankSettingsSection: View {
     @Environment(AppState.self) private var appState
     @State private var vm: PracticeBankViewModel?
-    @State private var exportURL: URL?
     @State private var logStatus: String?
     @State private var confirmDelete = false
     @State private var showImporter = false
@@ -101,14 +100,6 @@ struct PracticeBankSettingsSection: View {
                 importStatus = "选择文件失败：\(error.localizedDescription)"
             }
         }
-        .sheet(isPresented: Binding(
-            get: { exportURL != nil },
-            set: { if !$0 { exportURL = nil } }
-        )) {
-            if let exportURL {
-                ShareSheet(activityItems: [exportURL])
-            }
-        }
     }
 
     /// 导入题库包并整体替换本地库。`fileImporter` 交回来的是
@@ -160,11 +151,48 @@ struct PracticeBankSettingsSection: View {
         let url = directory.appending(path: BankLogic.exportFileName())
         do {
             try BankLogic.exportLogText(entries).write(to: url, atomically: true, encoding: .utf8)
-            exportURL = url
             logStatus = nil
+            presentShareSheet(for: url)
         } catch {
             logStatus = "导出失败：\(error.localizedDescription)"
         }
+    }
+
+    /// Present `UIActivityViewController` from the active window's top view
+    /// controller instead of a SwiftUI `.sheet`.
+    ///
+    /// Why not a sheet: this row is List content, and on the *first*
+    /// presentation of the session SwiftUI hosts that sheet's content twice —
+    /// two `PresentationHostingController`s alive at once, and the wrapper's
+    /// `makeUIViewController` called twice. UIKit refuses the second
+    /// `present` ("already presenting"), and the collision tears the share
+    /// sheet down ~1s after it appears — the "跳出分享界面又迅速关掉" symptom.
+    /// It isn't about the activity controller: a plain `UIViewController` in
+    /// the same sheet is hosted twice all the same, and a plain `@State` flag
+    /// instead of the derived binding doesn't change it either. Presented
+    /// from here it's a single `present` call with nothing racing it, and the
+    /// row still writes its tap-time-named txt first.
+    private func presentShareSheet(for url: URL) {
+        guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+              let window = scene.keyWindow ?? scene.windows.first,
+              var top = window.rootViewController
+        else { return }
+        while let presented = top.presentedViewController { top = presented }
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            // iPad: the share sheet is a popover and needs an anchor. The row
+            // that triggered it isn't reachable from here, so point at the
+            // middle of the screen and drop the arrow rather than point it at
+            // an unrelated bar button.
+            popover.sourceView = top.view
+            popover.sourceRect = CGRect(
+                x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0
+            )
+            popover.permittedArrowDirections = []
+        }
+        top.present(controller, animated: true)
     }
 
     private var isCrawling: Bool {
@@ -176,15 +204,4 @@ struct PracticeBankSettingsSection: View {
         if case .downloading(let progress) = vm?.phase { return progress }
         return nil
     }
-}
-
-/// System share sheet (保存到"文件" / AirDrop / 微信 …) for the exported txt.
-private struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
