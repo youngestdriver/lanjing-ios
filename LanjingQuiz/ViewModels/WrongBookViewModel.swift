@@ -36,6 +36,9 @@ final class WrongBookViewModel {
 
     private(set) var groups: [Group] = []
 
+    /// 首次读档是否完成:视图靠它区分「加载中」与「真的没有错题」。
+    private(set) var hasLoaded = false
+
     private let progressStore: any PracticeProgressStoring
     private let database: BankDatabase?
 
@@ -48,12 +51,22 @@ final class WrongBookViewModel {
 
     var isEmpty: Bool { groups.isEmpty }
 
+    /// 按 id 取一条错题(详情页路由只携带 id,进入时在此解析)。已不在错题里的
+    /// 题号返回 nil——调用方显示占位,而不是空屏。
+    func item(id: String) -> Item? {
+        for group in groups {
+            if let match = group.items.first(where: { $0.id == id }) { return match }
+        }
+        return nil
+    }
+
     /// 重读存档并重算分组(自足:每次出现都调,不依赖其他 VM 的加载时序)。
     /// 幂等——删库 / 换库 / 强制重爬(bankResetVersion 变化)后旧题号已无意义,
     /// 重调即自愈。
     func load() async {
         let stored = await progressStore.load()
         groups = Self.buildGroups(progress: stored ?? [:], database: database)
+        hasLoaded = true
     }
 
     // MARK: - 组装
@@ -118,5 +131,22 @@ final class WrongBookViewModel {
             if firstDate != secondDate { return firstDate > secondDate }
             return first.title < second.title
         }
+    }
+
+    // MARK: - 相对时间
+
+    /// 行内相对时间(纯函数,固定 now 即可单测):<1 分钟「刚刚」、<1 小时
+    /// 「N 分钟前」、<1 天「N 小时前」、<30 天「N 天前」,再往前显示「M月d日」。
+    /// 未来时间(时钟回拨)按「刚刚」处理,不出现负数。
+    static func relativeTime(from date: Date, now: Date = .now) -> String {
+        let seconds = now.timeIntervalSince(date)
+        if seconds < 60 { return "刚刚" }
+        if seconds < 3600 { return "\(Int(seconds / 60)) 分钟前" }
+        if seconds < 86_400 { return "\(Int(seconds / 3600)) 小时前" }
+        if seconds < 30 * 86_400 { return "\(Int(seconds / 86_400)) 天前" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日"
+        return formatter.string(from: date)
     }
 }

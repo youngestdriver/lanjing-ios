@@ -193,4 +193,72 @@ final class WrongBookViewModelTests: XCTestCase {
         await fromLegacy.load()
         XCTAssertTrue(fromLegacy.groups.isEmpty, "旧格式存档必须当空错题本,不崩")
     }
+
+    // MARK: - 展示辅助
+
+    /// 相对时间分档(纯函数):刚刚 / N 分钟前 / N 小时前 / N 天前 / M月d日。
+    func testRelativeTimeBuckets() {
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-10), now: now), "刚刚")
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-59), now: now), "刚刚")
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-60), now: now), "1 分钟前")
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-5 * 60), now: now), "5 分钟前")
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-3 * 3600), now: now), "3 小时前")
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-2 * 86_400), now: now), "2 天前")
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-29 * 86_400), now: now), "29 天前")
+        // ≥30 天落日期格式(时区无关:断言形状,不钉某一天)。
+        let old = WrongBookViewModel.relativeTime(from: now.addingTimeInterval(-40 * 86_400), now: now)
+        XCTAssertNotNil(old.range(of: #"^\d{1,2}月\d{1,2}日$"#, options: .regularExpression),
+                        "期望 M月d日,实际 \(old)")
+        // 时钟回拨(未来时间)按「刚刚」,不出现负数天数。
+        XCTAssertEqual(WrongBookViewModel.relativeTime(from: now.addingTimeInterval(600), now: now), "刚刚")
+    }
+
+    /// 首次读档前是「未加载」态(视图显示 loading,而不是先闪一帧空态);
+    /// 详情页路由只携带 id,item(id:) 负责解析。
+    func testHasLoadedAndItemLookup() async {
+        let questions = [makeQuestion("q1"), makeQuestion("q2")]
+        let progress: [String: PracticeProgress] = [
+            "言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1"],
+                                                 wrong: ["q1": makeRecord(lastWrongAt: -100)]),
+        ]
+        let (vm, _) = await makeVM(progress: progress, questions: questions)
+
+        XCTAssertFalse(vm.hasLoaded, "load() 之前必须是未加载态")
+        XCTAssertTrue(vm.isEmpty)
+
+        await vm.load()
+
+        XCTAssertTrue(vm.hasLoaded)
+        XCTAssertEqual(vm.item(id: "q1")?.question.id, "q1")
+        XCTAssertEqual(vm.item(id: "q1")?.record.wrongCount, 1)
+        XCTAssertNil(vm.item(id: "q2"), "不在错题里的题号解析为 nil")
+        XCTAssertNil(vm.item(id: "不存在"), "未知题号解析为 nil(详情页显示占位)")
+    }
+
+    /// 重调 load() 必须重读存档(视图在 bankResetVersion 变化 / 再次出现时调):
+    /// 换库后重写存档,旧题号不再解析,新题号出现。
+    func testLoadRereadsStoreOnSecondCall() async {
+        let questions = [makeQuestion("old1"), makeQuestion("q9")]
+        let (vm, store) = await makeVM(
+            progress: ["言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["old1"],
+                wrong: ["old1": makeRecord(lastWrongAt: -7200)]
+            )],
+            questions: questions
+        )
+
+        await vm.load()
+        XCTAssertEqual(vm.groups.first?.items.map(\.id), ["old1"])
+
+        // 模拟换库:存档换成新题号(旧 ID 已无意义)。
+        try? await store.save(["言语理解/成语辨析": PracticeProgress(
+            answeredIDs: ["q9"],
+            wrong: ["q9": makeRecord(lastWrongAt: -50)]
+        )])
+        await vm.load()
+
+        XCTAssertEqual(vm.groups.first?.items.map(\.id), ["q9"])
+        XCTAssertNil(vm.item(id: "old1"), "重载后旧题号不再解析")
+        XCTAssertNotNil(vm.item(id: "q9"))
+    }
 }
