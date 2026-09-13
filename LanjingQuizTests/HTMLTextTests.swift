@@ -72,4 +72,23 @@ final class HTMLTextTests: XCTestCase {
         let rendered = try XCTUnwrap(HTMLText.render("<ul><li>列表项</li></ul>", dark: false))
         XCTAssertTrue(String(rendered.characters).contains("列表项"))
     }
+    // MARK: - 摘要提取(错题本列表行)
+
+    func testSummaryStripsTagsDecodesEntitiesAndCollapsesWhitespace() {
+        // 真实题库大量 &nbsp;:plainText 只剥标签不解实体,摘要必须解完再压空白。
+        XCTAssertEqual(HTMLText.summary(from: "<p>甲&nbsp;&nbsp;乙</p><p>丙\t丁</p>"), "甲 乙 丙 丁")
+        XCTAssertEqual(HTMLText.summary(from: "<p>他说&ldquo;好&rdquo; &amp; 走了</p>"), "他说“好” & 走了")
+        XCTAssertEqual(HTMLText.summary(from: "<p>&#39;单引号&#39;</p>"), "'单引号'")
+        // <br> 是块边界,先补空格避免前后文字粘在一起。
+        XCTAssertEqual(HTMLText.summary(from: "<p>有图<br/>换行</p>"), "有图 换行")
+    }
+
+    func testSummaryTruncatesByCharacterAndAppendsEllipsis() {
+        XCTAssertEqual(HTMLText.summary(from: "<p>一二三四五六七八九十</p>", limit: 4), "一二三四…")
+        XCTAssertEqual(HTMLText.summary(from: "<p>一二三四五六七八九十</p>", limit: 10), "一二三四五六七八九十")
+        // 按 Character(字素簇)截断:家庭 emoji 是单个 Character,不能被切进 ZWJ 序列。
+        XCTAssertEqual(HTMLText.summary(from: "<p>👨‍👩‍👧‍👦甲乙丙</p>", limit: 2), "👨‍👩‍👧‍👦甲…")
+        // 默认 limit = 80(超限补「…」→ 81 个 Character)。
+        XCTAssertEqual(HTMLText.summary(from: "<p>" + String(repeating: "题", count: 100) + "</p>").count, 81)
+    }
 }

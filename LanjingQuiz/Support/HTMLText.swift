@@ -211,8 +211,31 @@ struct HTMLText: View {
 
     // MARK: - Helpers
 
-    static func plainText(_ html: String) -> String {
+    /// 剥标签(不解实体)。nonisolated:本类型从 `View` 一致性推断了 MainActor
+    /// 隔离,而这个纯字符串函数也要给非隔离上下文(单测、后台解析)用,
+    /// 不显式标注就只能在主线程调用。
+    nonisolated static func plainText(_ html: String) -> String {
         html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+    }
+
+    /// 错题本列表行的纯文本摘要:剥标签 → 解码实体 → 空白压缩 → 按 Character
+    /// 截断(超限补「…」)。不能直接用 `plainText`:它不解实体,真实题库里的
+    /// `&nbsp;` / `&ldquo;` 会以字面量形式进摘要(视觉乱码)。
+    /// nonisolated 同 `plainText`:纯字符串处理,调用方不限隔离域。
+    nonisolated static func summary(from html: String, limit: Int = 80) -> String {
+        // 块级边界(</p>、<br>、<br/>)先换成空格,避免相邻块的文字粘在一起。
+        let spaced = html.replacingOccurrences(
+            of: #"<br\s*/?>|</p>"#,
+            with: " ",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        let compressed = decodeEntities(plainText(spaced))
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard compressed.count > limit else { return compressed }
+        // prefix 按 Character(字素簇)计,emoji 不会被切进 ZWJ 序列。
+        return String(compressed.prefix(limit)) + "…"
     }
 
     /// Decodes the entities the question bank actually uses + numeric refs.
