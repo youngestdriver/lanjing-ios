@@ -694,4 +694,58 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertNil(fetched)
         XCTAssertNil(vm.session?.answers[2].correct)
     }
+
+    // MARK: - 再答对移出(拍板决定:练习中再次答对 → 自动移出错题本)
+
+    func testSingleCorrectRemovesWrongRecord() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        // 上一轮答错留下的记录(q1 答案 B,当时选了 A,错过 2 次)。
+        try await progressStore.save([
+            "言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q1"],
+                wrong: ["q1": WrongRecord(selected: ["A"], wrongCount: 2,
+                                          lastWrongAt: Date(), summary: "题干 q1")]
+            ),
+        ])
+        let baseline = await progressStore.saveCount
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("B") // q1 正确答案 → 移出
+
+        await waitForProgressSaves(progressStore, atLeast: baseline + 1)
+        let saved = await progressStore.stored
+        XCTAssertNil(saved?["言语理解/成语辨析"]?.wrong?["q1"], "再答对必须移出错题本")
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q1"], "已答登记不变")
+    }
+
+    func testMultiConfirmCorrectRemovesWrongRecord() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        try await progressStore.save([
+            "言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q3"],
+                wrong: ["q3": WrongRecord(selected: ["A", "B"], wrongCount: 1,
+                                          lastWrongAt: Date(), summary: "题干 q3")]
+            ),
+        ])
+        let baseline = await progressStore.saveCount
+        let vm = makeVM(storage: storage, sessionStore: store, progressStore: progressStore)
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.nextQuestion()
+        vm.nextQuestion() // → q3 多选(答案 A+C)
+        vm.tapOption("A")
+        vm.tapOption("C")
+        vm.confirmSelection() // 判对 → 移出
+
+        await waitForProgressSaves(progressStore, atLeast: baseline + 1)
+        let saved = await progressStore.stored
+        XCTAssertNil(saved?["言语理解/成语辨析"]?.wrong?["q3"], "多选提交答对同样移出")
+    }
 }

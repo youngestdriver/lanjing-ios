@@ -323,6 +323,7 @@ final class PracticeBankViewModel {
     /// - `correct == false`:按题 latest-wins upsert 错题(选中项覆盖、错次 +1、
     ///   时间刷新、摘要重采)。**写入不在 answeredIDs 去重守卫内** ——
     ///   「上一轮答过、本次答错」时该守卫为 false,放进守卫里会静默漏记。
+    /// - `correct == true`:删除该题的错题记录(练习中再答对 → 移出错题本)。
     /// - `correct == nil`(无答案题):只登记已答,永不写错题。
     /// - 多选未提交根本不进漏斗(`confirmSelection` 自带守卫)。
     ///
@@ -348,6 +349,10 @@ final class PracticeBankViewModel {
                 summary: HTMLText.summary(from: question.question)
             )
             entry.wrong = wrong
+            wrongChanged = true
+        } else if correct == true, entry.wrong?[question.id] != nil {
+            // 再答对 → 移出错题本(拍板决定:同一写入方闭环,零竞态)。
+            entry.wrong?.removeValue(forKey: question.id)
             wrongChanged = true
         }
         guard answeredChanged || wrongChanged else { return false }
