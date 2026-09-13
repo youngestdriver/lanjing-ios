@@ -261,4 +261,25 @@ final class WrongBookViewModelTests: XCTestCase {
         XCTAssertNil(vm.item(id: "old1"), "重载后旧题号不再解析")
         XCTAssertNotNil(vm.item(id: "q9"))
     }
+
+    // MARK: - 详情页回放
+
+    /// 详情页按「最近一次答错」回放:revealed + correct == false,选中项在选项行
+    /// 里判为 .wrong —— UI 测试锚点 option-<字母>-wrong 的数据来源。
+    func testItemReplayAnswerPinsWrongReplay() async throws {
+        let questions = [makeQuestion("q1")]   // 题干答案是 B,记录里选的是 A
+        let (vm, _) = await makeVM(
+            progress: ["言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q1"],
+                wrong: ["q1": makeRecord(lastWrongAt: -100)]
+            )],
+            questions: questions
+        )
+        await vm.load()
+
+        let item = try XCTUnwrap(vm.item(id: "q1"))
+        XCTAssertTrue(item.replayAnswer.revealed)
+        XCTAssertEqual(item.replayAnswer.correct, false)
+        XCTAssertEqual(item.replayAnswer.selected, ["A"])
+    }
 }

@@ -13,6 +13,14 @@ final class WrongBookViewModel {
         let question: BankQuestion
         let record: WrongRecord
         var id: String { question.id }
+
+        /// 详情页回放最近一次答错:revealed + correct == false,选项行据此把
+        /// record.selected 里的选项标红(option-<字母>-wrong)、正确答案标绿
+        /// ——「我的答案」的红色标记就是这条的产物。
+        var replayAnswer: PracticeSession.PracticeAnswer {
+            PracticeSession.PracticeAnswer(selected: Set(record.selected),
+                                           revealed: true, correct: false)
+        }
     }
 
     /// 一个「大类 · 题型」分组。subCategory 保留存档里的原始值(空串 =
