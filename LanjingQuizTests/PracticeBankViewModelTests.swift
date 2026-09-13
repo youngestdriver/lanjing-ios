@@ -58,6 +58,40 @@ actor FakePracticeProgressStore: PracticeProgressStoring {
     }
 }
 
+/// 离线爬取假实现:生产 facade(`PracticeUpstreamClient`,`Networking/PracticeUpstreamClient.swift:118`)
+/// 必须走网络,「更新题库」(force)这条路径的副作用链(清档、bump bankResetVersion)
+/// 在单测里只能靠注入实现驱动。fake 只做生产爬取成功后的可见结果:写题目文件 + meta。
+@MainActor
+final class FakePracticeCrawler: PracticeCrawling {
+    /// PracticeCrawling.hasSession:生产实现转发 api.hasSession;测试里恒真,
+    /// 免得往进程级 HTTPCookieStorage 里塞假会话。
+    var hasSession = true
+    /// 每次 crawlAllPapers 收到的 refresh —— 断言真实调用点确实传了 true(force)。
+    private(set) var refreshValues: [Bool] = []
+    private let categoryTexts: [String: String]
+
+    init(categoryTexts: [String: String] = [:]) {
+        self.categoryTexts = categoryTexts
+    }
+
+    func crawlAllPapers(storage: BankStorage, database: BankDatabase?, refresh: Bool,
+                        progress: @escaping (PracticeUpstreamClient.CrawlProgress) -> Void) async throws {
+        refreshValues.append(refresh)
+        guard let fake = storage as? FakeBankStorage else { return }
+        fake.categoryTexts = categoryTexts
+        fake.populated = true
+        fake.meta = BankMeta(
+            version: 1,
+            round: 1,
+            lastRun: nil,
+            targets: BankLogic.categories,
+            counts: categoryTexts.mapValues { BankLogic.parseJSONL($0).count }
+        )
+        progress(PracticeUpstreamClient.CrawlProgress(index: 1, total: 1,
+                                                       paperName: "【言语理解（二）】机考题库"))
+    }
+}
+
 @MainActor
 final class PracticeBankViewModelTests: XCTestCase {
 
@@ -747,5 +781,46 @@ final class PracticeBankViewModelTests: XCTestCase {
         await waitForProgressSaves(progressStore, atLeast: baseline + 1)
         let saved = await progressStore.stored
         XCTAssertNil(saved?["言语理解/成语辨析"]?.wrong?["q3"], "多选提交答对同样移出")
+    }
+
+    // MARK: - force 刷新(§4.3:先让 force 路径离线可跑)
+
+    /// force 刷新(我的 > 更新题库)原来只能靠真实网络跑,连它既有的清档副作用
+    /// 都没有回归。注入 FakePracticeCrawler 后,真实调用链
+    /// updateBank → crawlIfNeeded(force: true) 离线可跑:成功后 VM 侧会话与
+    /// 进度注册表都清空(旧题 ID 随题库替换一并作废)。
+    func testUpdateBankForceRefreshesAndClearsSessionAndProgress() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        // AppState 也注入 fake 存储:force 成功后 notifyBankChanged 会清 AppState
+        // 侧的档,默认的文件存储会在单测宿主里删真实沙盒文件(与 UI 测试共用容器)。
+        let appState = AppState(bankStorage: storage,
+                               practiceSessionStore: FakePracticeSessionStore(),
+                               practiceProgressStore: FakePracticeProgressStore(),
+                               bankDatabase: try! BankDatabase(inMemory: true))
+        let sessionStore = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let crawler = FakePracticeCrawler(categoryTexts: storage.categoryTexts)
+        let vm = PracticeBankViewModel(appState: appState, storage: storage, facade: crawler,
+                                       sessionStore: sessionStore, progressStore: progressStore,
+                                       database: makeDatabase(categoryTexts: storage.categoryTexts))
+
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A") // q1 单选答错 → 会话与进度都落过盘
+        await sessionStore.awaitSaveCount(1)
+        await progressStore.awaitSaveCount(1)
+        XCTAssertEqual(vm.answeredCount(category: "言语理解"), 1)
+
+        await vm.updateBank()
+
+        XCTAssertEqual(vm.phase, .ready)
+        XCTAssertEqual(crawler.refreshValues, [true], "更新题库必须走 refresh 模式")
+        await sessionStore.awaitClearCount(1)
+        await progressStore.awaitClearCount(1)
+        let clearedSession = await sessionStore.stored
+        let clearedProgress = await progressStore.stored
+        XCTAssertNil(clearedSession)
+        XCTAssertNil(clearedProgress)
+        XCTAssertEqual(vm.answeredCount(category: "言语理解"), 0)
     }
 }

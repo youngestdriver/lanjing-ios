@@ -102,6 +102,21 @@ enum PracticeMapping: Sendable {
     }
 }
 
+/// 爬取接缝:PracticeUpstreamClient 是唯一的生产实现(走网络)。抽出来的唯一
+/// 目的是可测——「更新题库」(force)路径的副作用链(清档、bump
+/// bankResetVersion)原本没法离线驱动(设计稿 §4.3)。镜像 BankStorage /
+/// PracticeProgressStoring 的协议注入模式。
+@MainActor
+protocol PracticeCrawling: AnyObject {
+    /// 登录会话可用性:生产实现直接转发 api.hasSession,与 AppState.api.hasSession
+    /// 同源;测试实现可以恒真,不必往进程级 cookie 存储里塞假会话。
+    var hasSession: Bool { get }
+
+    /// 全库爬取。refresh 语义见 PracticeUpstreamClient.crawlAllPapers。
+    func crawlAllPapers(storage: BankStorage, database: BankDatabase?, refresh: Bool,
+                        progress: @escaping (PracticeUpstreamClient.CrawlProgress) -> Void) async throws
+}
+
 /// Thin facade over APIClient for the practice flow: the paper list
 /// (机考题库 papers only), per-paper question fetching with local
 /// classification, and best-effort attempt ending.
@@ -116,11 +131,15 @@ enum PracticeMapping: Sendable {
 ///   - wfs=0 papers are someone's in-progress attempt: entered read-only,
 ///     never ended.
 @MainActor
-final class PracticeUpstreamClient {
+final class PracticeUpstreamClient: PracticeCrawling {
 
     private let api: APIClient
     /// Attempts this app session created via wfs=1 enters (paper id → session).
     private(set) var enteredSessions: [Int: ExamSession] = [:]
+
+    /// PracticeCrawling:练习爬取的登录闸门(原来是 VM 直接问 appState.api,
+    /// 现在问 facade)——生产实现转发,行为一致。
+    var hasSession: Bool { api.hasSession }
 
     init(api: APIClient) {
         self.api = api

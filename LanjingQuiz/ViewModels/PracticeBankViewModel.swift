@@ -20,7 +20,7 @@ final class PracticeBankViewModel {
 
     private let appState: AppState
     private let storage: BankStorage
-    private let facade: PracticeUpstreamClient
+    private let facade: any PracticeCrawling
     private let sessionStore: any PracticeSessionStoring
     private let progressStore: any PracticeProgressStoring
     private let database: BankDatabase?
@@ -44,7 +44,7 @@ final class PracticeBankViewModel {
     /// banner by the quiz view; consumeResumeNotice() clears it (not persisted).
     private(set) var resumedFromDisk = false
 
-    init(appState: AppState, storage: BankStorage? = nil, facade: PracticeUpstreamClient? = nil,
+    init(appState: AppState, storage: BankStorage? = nil, facade: (any PracticeCrawling)? = nil,
          sessionStore: (any PracticeSessionStoring)? = nil,
          progressStore: (any PracticeProgressStoring)? = nil,
          database: BankDatabase? = nil) {
@@ -114,7 +114,7 @@ final class PracticeBankViewModel {
 
     private func crawlIfNeeded(force: Bool) async {
         guard force || phase != .ready else { return }
-        guard appState.api.hasSession else {
+        guard facade.hasSession else {
             phase = .needsLogin
             return
         }
