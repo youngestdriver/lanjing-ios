@@ -72,13 +72,16 @@ struct OptionRowView: View {
             } else if compact {
                 compactTile
             } else {
-                HStack(alignment: .top, spacing: 12) {
+                // 居中对齐(同练习页):单行选项的文字在框里垂直居中,选项里
+                // 的独立图块左对齐而不是居中。
+                HStack(alignment: .center, spacing: 12) {
                     keycap
                     if let optionText {
                         RichHTMLContent(
                             html: optionText,
                             fontSize: 16,
-                            allowsTextSelection: false
+                            allowsTextSelection: false,
+                            imageAlignment: .leading
                         )
                     }
                     Spacer(minLength: 0)

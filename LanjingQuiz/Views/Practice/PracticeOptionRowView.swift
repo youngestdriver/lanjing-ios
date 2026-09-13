@@ -6,11 +6,36 @@ import SwiftUI
 /// letters aligned with the original slots. State comes from the session's
 /// per-question `answers` — after the data-layer fix the wrongly-tapped
 /// option is in `selected`, so it can be marked red (问题 2).
+/// 翻页手势标记:横向翻页成立期间置位,选项行据此忽略这一摸。
+///
+/// 刻意用**引用类型**而不是 `@State Bool`:它在一次手势里会被反复赋值,若是
+/// 被观察的状态,每次赋值都要重渲染整页(观感发卡)并连带刷新选项行样式;而
+/// 它只在「抬手那一刻」被读一次,不需要驱动任何渲染。`generation` 用来防止
+/// 上一次手势的落定回调把新手势的标记误清(连续快速翻页时会发生)。
+final class PagingFlag {
+    private(set) var isActive = false
+    private(set) var generation = 0
+
+    /// 手势成立(每次 onChanged 都会调,只有第一次推进代号)。
+    func activate() {
+        if !isActive { generation += 1 }
+        isActive = true
+    }
+
+    /// 手势落定:期间没有新手势开始才清位。
+    func settle(_ token: Int) {
+        guard token == generation else { return }
+        isActive = false
+    }
+}
+
 struct PracticeOptionRowView: View {
     let question: BankQuestion
     let letter: String
     /// Current question's per-question state; nil = 未作答.
     let answer: PracticeSession.PracticeAnswer?
+    /// 翻页手势标记:手势成立期间这一摸不该算点击(见 body 里的守卫)。
+    let paging: PagingFlag
     let onTap: () -> Void
 
     private var optionText: String? {
@@ -71,19 +96,28 @@ struct PracticeOptionRowView: View {
     }
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .top, spacing: 12) {
+        // 翻页手势成立时这一摸不算点击:翻页在松手时才切页,抬手那一刻手指
+        // 下已经是新页的选项,不拦就会误选。只忽略动作、**不改任何样式**——
+        // 早先用 .disabled(isPaging) 会让选项在每次翻页时整片变灰。
+        Button {
+            guard !paging.isActive else { return }
+            onTap()
+        } label: {
+            // 居中对齐,单行选项的文字才在框里垂直居中(顶对齐会把它顶到框
+            // 上部:实测墨迹上 15.3pt / 下 25.3pt);多行时字母块落在文字块
+            // 中间。选项里的独立图块也左对齐,和文字选项一致。
+            HStack(alignment: .center, spacing: 12) {
                 keycap
                 if isEmptySlot {
                     Text("（填空）")
                         .font(.system(size: 15))
                         .foregroundStyle(.secondary)
-                        .padding(.top, 5)
                 } else if let optionText {
                     RichHTMLContent(
                         html: optionText,
                         fontSize: 16,
-                        allowsTextSelection: false
+                        allowsTextSelection: false,
+                        imageAlignment: .leading
                     )
                     .id("\(question.id)-option-\(letter)")
                 }

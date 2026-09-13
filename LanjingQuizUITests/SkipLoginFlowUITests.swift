@@ -18,10 +18,16 @@ final class SkipLoginFlowUITests: XCTestCase {
         let skip = app.buttons["skip-login"]
         if !skip.waitForExistence(timeout: 5) {
             // 模拟器残留了会话:先退出登录回到登录页,再验证跳过流程。
+            // 「退出登录」现在在「我的 > 高级」子页里(有会话时才显示)。
             let profileTab = app.tabBars.buttons["我的"]
             XCTAssertTrue(profileTab.waitForExistence(timeout: 10), "已登录状态下没有主界面 tab")
             profileTab.tap()
-            app.buttons["退出登录"].tap()
+            let advanced = app.buttons["advanced-settings"]
+            XCTAssertTrue(advanced.waitForExistence(timeout: 10), "「我的」里没有高级入口")
+            advanced.tap()
+            let logout = app.buttons["退出登录"]
+            XCTAssertTrue(logout.waitForExistence(timeout: 10), "高级页里没有「退出登录」")
+            logout.tap()
             XCTAssertTrue(skip.waitForExistence(timeout: 10), "退出登录后跳过按钮未出现")
         }
         skip.tap()
@@ -29,6 +35,8 @@ final class SkipLoginFlowUITests: XCTestCase {
         // 跳过 → 「我的」tab,显示「未登录」
         let notLoggedIn = app.staticTexts["未登录"]
         XCTAssertTrue(notLoggedIn.waitForExistence(timeout: 10), "跳过后未落在「我的」tab(未登录 label 缺失)")
+        // 「退出登录」只在有会话时出现,未登录态不该有。
+        XCTAssertFalse(app.buttons["退出登录"].exists, "未登录时不应出现「退出登录」")
 
         // 考试列表 tab:未登录应显示「需要登录」占位(与练习页一致),而不是
         // 网络错误文本/被踢回登录页。
@@ -40,6 +48,15 @@ final class SkipLoginFlowUITests: XCTestCase {
         // 回到「我的」tab 继续后续断言
         app.tabBars.buttons["我的"].tap()
         XCTAssertTrue(notLoggedIn.waitForExistence(timeout: 5), "回到「我的」tab 后未登录 label 缺失")
+
+        // 题库 / 日志 / 云端同步 三节现在在「我的 > 高级」子页里。
+        let advanced = app.buttons["advanced-settings"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 10), "「我的」里没有高级入口")
+        advanced.tap()
+        let advancedBar = app.navigationBars["高级"]
+        XCTAssertTrue(advancedBar.waitForExistence(timeout: 5), "点高级后没进入高级页")
+        // 「退出登录」也搬进了高级页,同样只在有会话时出现。
+        XCTAssertFalse(app.buttons["退出登录"].exists, "未登录时高级页不应出现「退出登录」")
 
         // List 懒加载:先滚动到 Cookie 云端同步 Section 使其渲染,再断言输入框状态
         let toggle = app.switches["Cookie 云端同步"]
@@ -70,7 +87,8 @@ final class SkipLoginFlowUITests: XCTestCase {
         XCTAssertTrue(serverField.waitForExistence(timeout: 5), "开启后服务器地址输入框未出现")
         XCTAssertTrue(uuidField.waitForExistence(timeout: 5), "开启后 UUID 输入框未出现")
 
-        // 「去登录」回到登录页(账户 Section 在列表顶部,反向滚动)
+        // 「去登录」回到登录页(账户 Section 在「我的」首屏,先退出高级页)
+        advancedBar.buttons.element(boundBy: 0).tap()
         let goLogin = app.buttons["goto-login"]
         scrolls = 0
         while !goLogin.exists && scrolls < 6 {

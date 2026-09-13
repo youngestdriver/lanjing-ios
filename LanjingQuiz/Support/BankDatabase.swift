@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftData
 import UIKit
 
@@ -198,6 +199,13 @@ struct BankDatabase: Sendable {
         imageResolver.image(for: remoteURL)
     }
 
+    /// 这张图是不是「透明底的深色线条稿」(公式图),深色模式下渲染端要把它
+    /// 反色。判据见 BankImageResolver.isLineArt。
+    @MainActor
+    func isLineArtImage(_ remoteURL: String) -> Bool {
+        imageResolver.isLineArt(remoteURL)
+    }
+
     /// 题图来源:爬取路径逐张下载(网络),导入路径从题库包里抽(零网络)。
     enum BankImageSource {
         case remote
@@ -395,6 +403,12 @@ final class BankImageResolver: @unchecked Sendable {
         cache.totalCostLimit = 64 * 1024 * 1024
         return cache
     }()
+    /// 线条稿判定缓存(URL → Bool):判一次很便宜,但每题重算没必要。
+    private let lineArtCache: NSCache<NSString, NSNumber> = {
+        let cache = NSCache<NSString, NSNumber>()
+        cache.countLimit = 512
+        return cache
+    }()
 
     init(container: ModelContainer) { self.container = container }
 
@@ -405,13 +419,101 @@ final class BankImageResolver: @unchecked Sendable {
     func localize(_ html: String) -> String {
         let urls = Set(BankDatabase.imageURLs(from: html))
         guard !urls.isEmpty else { return html }
-        var result = html
+        var result = Self.markLineArt(in: html, urls: urls.filter { isLineArt($0) })
         for url in urls {
             guard let uri = dataURI(for: url) else { continue }
             result = result.replacingOccurrences(of: url, with: uri)
             // 上游同一张图有 raw(&latex=) 与实体转义(&amp;latex=) 两种序列化。
             let escaped = url.replacingOccurrences(of: "&", with: "&amp;")
             if escaped != url { result = result.replacingOccurrences(of: escaped, with: uri) }
+        }
+        return result
+    }
+
+    /// 这张图是不是「透明底的深色线条稿」——上游的 LaTeX 公式图 2574 张抽样
+    /// 36/36 都是这种:四周全透明、纯灰度(彩色像素 0%)、字形 #2A2A2A 上下。
+    /// 深色模式下它们和背景糊成一片(就是「有些图看不清」的那批);图表/截图
+    /// 那类是不透明浅底(抽样 24/24 覆盖率 100%、平均 RGB≈245),不命中,也
+    /// 不该被反色。
+    ///
+    /// 判据取**像素**而不是 URL:上游换域名或换端点时,URL 匹配会静默失效
+    /// (本仓已经因为静默丢图吃过一次亏)。只有本地没字节的图(考试流程的
+    /// 远程图,不进本地库)才退回公式端点判据兜底——那个端点的语义就是
+    /// 「LaTeX 渲染出来的深色字形」。
+    func isLineArt(_ remoteURL: String) -> Bool {
+        let raw = Self.canonical(remoteURL)
+        if let cached = lineArtCache.object(forKey: raw as NSString) { return cached.boolValue }
+        let result = Self.isLineArt(data: imageData(for: raw)?.data) || Self.isFormulaEndpoint(raw)
+        lineArtCache.setObject(NSNumber(value: result), forKey: raw as NSString)
+        return result
+    }
+
+    /// 上游公式图端点,给本地没字节的图兜底(见 isLineArt)。
+    nonisolated private static func isFormulaEndpoint(_ url: String) -> Bool {
+        url.contains("/accessories/formulas?")
+    }
+
+    /// 透明 + 深色 = 线条稿。按**总像素**封顶采样(6.5 万,一张 946×885 的
+    /// 图表够用),保持长宽比——按最长边缩会把 666×23 这种长公式压成 64×2,
+    /// 笔画被平均掉,整张图判成「全透明」。
+    nonisolated static func isLineArt(data: Data?) -> Bool {
+        guard let data,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              // 旧库里有 400-JSON 错误体、只有签名的截断图这类记录:状态没到
+              // complete 就当场判非线条稿,别去解码(ImageIO 会刷一行错误日志)。
+              CGImageSourceGetStatus(source) == .statusComplete,
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return false }
+        let scale = min(1, (65536 / Double(image.width * image.height)).squareRoot())
+        let width = max(1, Int(Double(image.width) * scale))
+        let height = max(1, Int(Double(image.height) * scale))
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var opaque = 0, dark = 0, colored = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) where pixels[index + 3] > 32 {
+            opaque += 1
+            let red = Double(pixels[index])
+            let green = Double(pixels[index + 1])
+            let blue = Double(pixels[index + 2])
+            if 0.2126 * red + 0.7152 * green + 0.0722 * blue < 110 { dark += 1 }
+            if max(red, max(green, blue)) - min(red, min(green, blue)) > 40 { colored += 1 }
+        }
+        guard opaque > 0 else { return false }
+        // 大半不透明 = 自带背景的图(图表/截图),不是线条稿。
+        guard Double(opaque) / Double(width * height) < 0.9 else { return false }
+        // 彩色图不反色:全库 3218 张线条稿里 3217 张彩色像素 <10%(只有字形),
+        // 唯一的例外是一张彩色 logo(97% 彩色)——线条稿的判据对它成立,但反色
+        // 会把红橙变青蓝。
+        guard Double(colored) / Double(opaque) < 0.15 else { return false }
+        return Double(dark) / Double(opaque) > 0.5
+    }
+
+    /// 给线条稿的 <img> 打上 data-line-art:本地化会把 src 换成 data: URI,
+    /// 到那时 CSS 再也认不出这是哪张图,所以标记必须在替换之前打。
+    nonisolated static func markLineArt(in html: String, urls: [String]) -> String {
+        guard !urls.isEmpty,
+              let regex = try? NSRegularExpression(
+                  pattern: #"<img\b[^>]*>"#, options: [.caseInsensitive]
+              )
+        else { return html }
+        // 上游同一张图有 raw 与实体转义两种写法,两种都得认(同 localize)。
+        let needles = Set(urls.flatMap { [$0, $0.replacingOccurrences(of: "&", with: "&amp;")] })
+        let source = html as NSString
+        let tags = regex.matches(in: html, range: NSRange(location: 0, length: source.length))
+        var result = html
+        // 从后往前改:前面的 range 才不会被改动挪位。
+        for match in tags.reversed() {
+            let tag = source.substring(with: match.range)
+            guard needles.contains(where: tag.contains),
+                  !tag.lowercased().contains("data-line-art"),
+                  let range = Range(match.range, in: result)
+            else { continue }
+            result.replaceSubrange(range, with: "<img data-line-art=\"1\"" + tag.dropFirst(4))
         }
         return result
     }

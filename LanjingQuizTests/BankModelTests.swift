@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import UIKit
 @testable import LanjingQuiz
 
 final class BankModelTests: XCTestCase {
@@ -264,5 +265,108 @@ final class BankModelTests: XCTestCase {
         // round-trip preserves the stem
         let roundTripped = try roundTrip(question)
         XCTAssertEqual(roundTripped.stem, "<p>共享材料</p>")
+    }
+
+    // MARK: - 公式图判定(透明底深色线条稿 → 深色模式反色)
+
+    /// 上游字形色,实测 #2A2A2A 上下。
+    private var ink: UIColor { UIColor(white: 0.16, alpha: 1) }
+
+    private func png(
+        width: Int,
+        height: Int,
+        background: UIColor?,
+        strokes: [(CGRect, UIColor)]
+    ) -> Data {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = background != nil
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
+        let image = renderer.image { context in
+            if let background {
+                background.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            }
+            for (rect, color) in strokes {
+                color.setFill()
+                context.fill(rect)
+            }
+        }
+        return image.pngData()!
+    }
+
+    /// 模拟公式字形:几道细横条(覆盖率低、全深色)。
+    private func glyphStrokes(width: Int = 48) -> [(CGRect, UIColor)] {
+        (0..<4).map { index in
+            (CGRect(x: 6, y: 5 + index * 4, width: width - 12, height: 2), ink)
+        }
+    }
+
+    func testIsLineArtDetectsDarkGlyphsOnTransparent() {
+        let data = png(width: 60, height: 23, background: nil, strokes: glyphStrokes())
+        XCTAssertTrue(BankImageResolver.isLineArt(data: data))
+    }
+
+    /// 不透明浅底是图表/截图,反色就成了负片。
+    func testIsLineArtIgnoresOpaqueLightImage() {
+        let data = png(width: 200, height: 120, background: .white, strokes: glyphStrokes())
+        XCTAssertFalse(BankImageResolver.isLineArt(data: data))
+    }
+
+    /// 透明底 + 浅色字形在深色模式下本来就看得见,不该反色。
+    func testIsLineArtIgnoresLightGlyphsOnTransparent() {
+        let strokes: [(CGRect, UIColor)] = [(CGRect(x: 6, y: 8, width: 40, height: 6), .white)]
+        let data = png(width: 60, height: 23, background: nil, strokes: strokes)
+        XCTAssertFalse(BankImageResolver.isLineArt(data: data))
+    }
+
+    /// 透明底 + 深的**彩色**图不反色:全库唯一一张透明底彩色图是彩色 logo,
+    /// 反色会把红橙变青蓝。
+    func testIsLineArtIgnoresColoredArtworkOnTransparent() {
+        let brand = UIColor(red: 0.78, green: 0.06, blue: 0.18, alpha: 1)   // 红橙色
+        let strokes: [(CGRect, UIColor)] = (0..<4).map { index in
+            (CGRect(x: 6, y: 5 + index * 4, width: 40, height: 3), brand)
+        }
+        let data = png(width: 60, height: 23, background: nil, strokes: strokes)
+        XCTAssertFalse(BankImageResolver.isLineArt(data: data))
+    }
+
+    func testIsLineArtIgnoresFullyTransparentImage() {
+        let data = png(width: 60, height: 23, background: nil, strokes: [])
+        XCTAssertFalse(BankImageResolver.isLineArt(data: data))
+    }
+
+    /// 长公式是宽扁图(实测有 666×23):按最长边缩采样会把笔画抹平,整张判成
+    /// 「全透明」;按总像素封顶、保持长宽比才判得出来。
+    func testIsLineArtHandlesWideShortFormula() {
+        let data = png(width: 666, height: 23, background: nil, strokes: glyphStrokes(width: 660))
+        XCTAssertTrue(BankImageResolver.isLineArt(data: data))
+    }
+
+    // MARK: - 线条稿标记
+
+    func testMarkLineArtMarksOnlyLineArtTags() {
+        let formula = "https://fb.fbstatic.cn/api/planet/accessories/formulas?fontSize=18&latex=abc"
+        let chart = "https://cdn.example.com/chart.png"
+        let html = #"<p>看图</p><img flag="tex" src="\#(formula)"><img src="\#(chart)">"#
+        let marked = BankImageResolver.markLineArt(in: html, urls: [formula])
+        XCTAssertTrue(marked.contains(#"<img data-line-art="1" flag="tex" src="\#(formula)""#),
+                      "公式图应被打标记且保留原属性")
+        XCTAssertTrue(marked.contains(#"<img src="\#(chart)">"#), "图表不该被打标记")
+    }
+
+    /// 上游同一张图有 raw 与实体转义两种写法,两种都要认。
+    func testMarkLineArtMatchesHTMLEscapedURL() {
+        let raw = "https://fb.fbstatic.cn/api/planet/accessories/formulas?fontSize=18&latex=abc"
+        let html = #"<img src="https://fb.fbstatic.cn/api/planet/accessories/formulas?fontSize=18&amp;latex=abc">"#
+        XCTAssertTrue(BankImageResolver.markLineArt(in: html, urls: [raw]).contains("data-line-art"))
+    }
+
+    /// 打标记不能破坏 src:localize 的下一步还要按 URL 换成 data: URI。
+    func testMarkedTagStillYieldsImageURL() {
+        let formula = "https://fb.fbstatic.cn/api/planet/accessories/formulas?fontSize=18&latex=abc"
+        let html = #"<img src="\#(formula)">"#
+        let marked = BankImageResolver.markLineArt(in: html, urls: [formula])
+        XCTAssertEqual(BankDatabase.imageURLs(from: marked), [formula])
     }
 }

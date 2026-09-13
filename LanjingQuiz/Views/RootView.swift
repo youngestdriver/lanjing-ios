@@ -119,6 +119,9 @@ private struct ProfileView: View {
         NavigationStack {
             List {
                 Section {
+                    // 账户一节只放「当前状态 + 对应的那个操作」:没会话才需要
+                    // 去登录;有会话时的「退出登录」在「高级」子页(低频、且
+                    // 破坏性,不该出现在首屏顺手的位置)。
                     if appState.api.hasSession {
                         Label("已登录", systemImage: "checkmark.seal.fill")
                             .foregroundStyle(DS.accent)
@@ -159,14 +162,15 @@ private struct ProfileView: View {
                     }
                 }
 
-                PracticeBankSettingsSection()
-
-                CookieCloudSection()
-
+                // 题库 / 日志 / 云端同步 是低频配置项,收进「高级」子页,
+                // 「我的」首屏只留日常会用的开关。
                 Section {
-                    Button("退出登录", role: .destructive) {
-                        appState.logout()
+                    NavigationLink {
+                        AdvancedSettingsView()
+                    } label: {
+                        Text("高级")
                     }
+                    .accessibilityIdentifier("advanced-settings")
                 }
 
                 Section {
@@ -187,6 +191,30 @@ private struct ProfileView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         return build.isEmpty ? version : "\(version) (\(build))"
+    }
+}
+
+/// 我的 > 高级:题库(更新 / 删除 / 导入)、日志导出、Cookie 云端同步。
+/// 三节原样搬进来,只是不再直接出现在「我的」首屏;本节内容与「我的」共用
+/// 同一个 NavigationStack,所以导航栏标题自己写。
+private struct AdvancedSettingsView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        List {
+            PracticeBankSettingsSection()
+            CookieCloudSection()
+            // 退出登录放最后:破坏性、低频,和「我的」首屏同样的条件——
+            // 只有真的能退出(有会话)时才出现。
+            if appState.api.hasSession {
+                Section {
+                    Button("退出登录", role: .destructive) {
+                        appState.logout()
+                    }
+                }
+            }
+        }
+        .navigationTitle("高级")
     }
 }
 

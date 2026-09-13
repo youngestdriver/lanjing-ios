@@ -10,6 +10,10 @@ struct RichHTMLContent: View {
     let html: String
     var fontSize: CGFloat = 17
     var allowsTextSelection = true
+    /// 独立图块(整行公式/图表)在容器里怎么摆。题干居中(默认),选项行传
+    /// `.leading`——选项的文字本来就是左对齐的,图片居中了会让同一组选项
+    /// 一半靠左一半居中。
+    var imageAlignment: Alignment = .center
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(AppState.self) private var appState
@@ -36,7 +40,7 @@ struct RichHTMLContent: View {
                         case .text(let inner):
                             HTMLText(html: Self.stripTrailingFiller(inner))
                         case .image(let remoteURL):
-                            LocalBankImage(remoteURL: remoteURL)
+                            LocalBankImage(remoteURL: remoteURL, alignment: imageAlignment)
                         case .mixed(let inner):
                             webViewBlock(html: inner)
                         }
@@ -394,6 +398,10 @@ private struct InlineHTMLWebView: UIViewRepresentable {
         // !important and wins by type specificity.
         let colorRule = dark ? "* { background-color: transparent !important; color: inherit !important; }"
                              : "* { background-color: transparent !important; }"
+        // 上游公式图是透明底的深色字形(纯灰度),深色模式下与背景糊成一片;
+        // localize() 给这些图打了 data-line-art(判据见 BankImageResolver.
+        // isLineArt),这里反色。纯灰度反色无损,带底色的图表不打标、不受影响。
+        let lineArtRule = dark ? "img[data-line-art] { filter: invert(1); }" : ""
         return """
         <!doctype html>
         <html><head>
@@ -416,6 +424,7 @@ private struct InlineHTMLWebView: UIViewRepresentable {
             vertical-align: middle;
         }
         \(colorRule)
+        \(lineArtRule)
         </style></head>
         <body>\(RichHTMLContent.stripTrailingFiller(html))</body>
         <script>
@@ -486,26 +495,38 @@ private struct InlineHTMLWebView: UIViewRepresentable {
 /// 缩放,小图(公式/图例)保持原始尺寸不放大。
 private struct LocalBankImage: View {
     let remoteURL: String
+    /// 图在可用宽度里的水平位置;题干居中,选项行左对齐。
+    var alignment: Alignment = .center
     @Environment(AppState.self) private var appState
+    @Environment(\.colorScheme) private var colorScheme
     @State private var image: UIImage?
+    /// 线条稿(公式图)在深色模式下要反色,与 WebView 那条路同一判据。
+    @State private var isLineArt = false
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
+                let rendered = Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: image.size.width)
                     .padding(.vertical, 4)
+                if colorScheme == .dark, isLineArt {
+                    rendered.colorInvert()
+                } else {
+                    rendered
+                }
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.15))
                     .frame(height: 44)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: alignment)
         .task(id: remoteURL) {
-            image = appState.bankDatabase?.resolverImage(for: remoteURL)
+            guard let database = appState.bankDatabase else { return }
+            image = database.resolverImage(for: remoteURL)
+            isLineArt = database.isLineArtImage(remoteURL)
         }
     }
 }

@@ -40,7 +40,9 @@ final class PracticeFlowUITests: XCTestCase {
         // dedupes by _id, so the category holds exactly 5 questions (q1–q3
         // 成语辨析 + q4/q5 虚词辨析; the latter pair feeds the 题干高度 test).
         let categoryRow = app.staticTexts["言语理解"]
-        XCTAssertTrue(categoryRow.waitForExistence(timeout: 20), "category list never appeared (crawl failed?)")
+        // 45s 不是宽容:批次里第一个跑的用例是冷启动(模拟器页缓存冷 + mock 冷
+        // + 全库首次爬取),20s 会偶发不够——那 34s 就"失败"的其实是慢,不是错。
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 45), "category list never appeared (crawl failed?)")
         XCTAssertTrue(app.staticTexts["5 题"].waitForExistence(timeout: 5), "category count missing")
         categoryRow.tap()
 
@@ -98,6 +100,11 @@ final class PracticeFlowUITests: XCTestCase {
         let profileTab = app.tabBars.buttons["我的"]
         XCTAssertTrue(profileTab.waitForExistence(timeout: 5), "tab bar never reappeared after popping to the category root")
         profileTab.tap()
+
+        // 题库 / 日志 / 云端同步 三节搬进了「我的 > 高级」子页。
+        let advanced = app.buttons["advanced-settings"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 10), "「我的」里没有高级入口")
+        advanced.tap()
 
         let updateButton = app.buttons["更新题库"]
         XCTAssertTrue(updateButton.waitForExistence(timeout: 10), "更新题库 button missing")
@@ -365,6 +372,53 @@ final class PracticeFlowUITests: XCTestCase {
         XCTAssertTrue(categoryProgress.waitForExistence(timeout: 5), "category row did not show 3/5 progress")
     }
 
+    /// 回归:按住选项横向翻页时,抬起不该选中任何选项。
+    /// 翻页在**松手时**才切页,而同一次触摸的抬起会落在手指下那个位置——
+    /// 那已经是新页的选项,曾导致「翻页即误选」并把该题顺手判掉。修复:翻页
+    /// 手势成立即禁用选项行,吸附动画结束后才放开。
+    func testDragFromOptionPagesWithoutSelecting() throws {
+        continueAfterFailure = false
+
+        let server = MockUpstreamServer()
+        try server.start()
+        defer { server.stop() }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["LANJING_BASE_URL"] = "http://127.0.0.1:\(server.port)"
+        app.launchArguments = ["-reset-bank"]
+        app.launch()
+        logInIfNeeded(app)
+        enterSubcategory("成语辨析", app: app)
+
+        let header1 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(header1.waitForExistence(timeout: 10), "第 1 题没出现")
+
+        // 手指按在选项 A 上,向左拖 150pt(超过 1/4 页宽的翻页阈值)再抬起。
+        let optionA = optionButton(app, "A")
+        XCTAssertTrue(optionA.waitForExistence(timeout: 5), "选项 A 不在")
+        let start = optionA.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.15, thenDragTo: start.withOffset(CGVector(dx: -150, dy: 0)))
+
+        let header2 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 2/'")).firstMatch
+        XCTAssertTrue(header2.waitForExistence(timeout: 5), "拖拽没有翻到第 2 题")
+
+        for letter in ["A", "B", "C", "D"] {
+            for suffix in ["selected", "wrong", "correct"] {
+                XCTAssertFalse(app.buttons["option-\(letter)-\(suffix)"].exists,
+                               "翻页误选了 option-\(letter)-\(suffix)")
+            }
+        }
+
+        // 翻页不该改变选项的样子:早先用 .disabled 拦点击,会让整片选项在
+        // 每次翻页时变灰(disabled 的样式副作用),这里锁住「一直可用」。
+        for letter in ["A", "B", "C", "D"] {
+            let row = app.buttons[letter]
+            if row.exists {
+                XCTAssertTrue(row.isEnabled, "选项 \(letter) 在翻页后变灰了")
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     /// 练习 tab → category row → subcategory row (each level waits for its
@@ -375,7 +429,9 @@ final class PracticeFlowUITests: XCTestCase {
         practiceTab.tap()
 
         let categoryRow = app.staticTexts[category]
-        XCTAssertTrue(categoryRow.waitForExistence(timeout: 20), "category list never appeared (crawl failed?)")
+        // 45s 不是宽容:批次里第一个跑的用例是冷启动(模拟器页缓存冷 + mock 冷
+        // + 全库首次爬取),20s 会偶发不够——那 34s 就"失败"的其实是慢,不是错。
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 45), "category list never appeared (crawl failed?)")
         waitForHittable(categoryRow)
         categoryRow.tap()
 

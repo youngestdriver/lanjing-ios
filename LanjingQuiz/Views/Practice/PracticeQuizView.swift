@@ -16,6 +16,11 @@ struct PracticeQuizView: View {
     @State private var showAnswerCard = false
     /// 跟手翻页的累计位移;悬停期间驱动页面平移,松手后归零(吸附动画)。
     @State private var dragOffset: CGFloat = 0
+    /// 本次触摸已被判定为横向翻页。翻页在**松手**时才切页,而同一次触摸的
+    /// 抬起会被当成一次点击落在手指下那个位置——那已经是新页的选项了,于是
+    /// 「按住选项翻页、抬在选项上」会直接误选。手势成立即置位,选项行据此
+    /// 忽略这一摸;吸附动画落定后再放开(见 PagingFlag)。
+    @State private var paging = PagingFlag()
     /// 已物化(构建了 WebView/原生文本)的页索引。进入时只同步物化当前页,
     /// 其余页由 .task 后台按「距当前页最近」逐批补建——首屏不再为整个会话
     /// 的富文本一次性付费;跳转目标页总是立即物化且物化后永久保留(再次
@@ -158,9 +163,11 @@ struct PracticeQuizView: View {
                             if session.index == 0 && offset > 0 { offset *= 0.3 }
                             if session.index == session.questions.count - 1 && offset < 0 { offset *= 0.3 }
                             dragOffset = offset
+                            paging.activate()
                         }
                         .onEnded { value in
                             guard dragOffset != 0 else { return }
+                            let token = paging.generation
                             let edge = width * 0.25
                             let translation = abs(value.translation.width) > abs(value.translation.height)
                                 ? value.translation.width
@@ -169,15 +176,21 @@ struct PracticeQuizView: View {
                                 withAnimation(.interpolatingSpring(stiffness: 300, damping: 32)) {
                                     dragOffset = 0
                                     vm.jumpTo(min(session.index + 1, session.questions.count - 1))
+                                } completion: {
+                                    paging.settle(token)
                                 }
                             } else if translation > edge || value.predictedEndTranslation.width > edge {
                                 withAnimation(.interpolatingSpring(stiffness: 300, damping: 32)) {
                                     dragOffset = 0
                                     vm.jumpTo(max(session.index - 1, 0))
+                                } completion: {
+                                    paging.settle(token)
                                 }
                             } else {
                                 withAnimation(.interpolatingSpring(stiffness: 300, damping: 32)) {
                                     dragOffset = 0
+                                } completion: {
+                                    paging.settle(token)
                                 }
                             }
                         }
@@ -255,6 +268,9 @@ struct PracticeQuizView: View {
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // 内容不超屏时不接受上下拖动(也就不会回弹):页内的纵向回弹会和
+        // 翻页手势打架,拖起来发飘;真正需要滚动的长题不受影响。
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private func headerRow(_ session: PracticeSession, _ question: BankQuestion) -> some View {
@@ -295,6 +311,7 @@ struct PracticeQuizView: View {
                     question: question,
                     letter: letter,
                     answer: answer,
+                    paging: paging,
                     onTap: { vm.tapOption(letter) }
                 )
             }
