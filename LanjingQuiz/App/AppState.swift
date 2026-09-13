@@ -28,10 +28,10 @@ final class AppState {
     let bankStorage: BankStorage
     /// Practice-run persistence (Application Support/LanjingQuiz/
     /// practice-session.json), injected like bankStorage so tests can fake it.
-    let practiceSessionStore: FileManagerPracticeSessionStore
+    let practiceSessionStore: any PracticeSessionStoring
     /// 练习进度注册表(Application Support/LanjingQuiz/practice-progress.json),
     /// 与 sessionStore 同注入模式。
-    let practiceProgressStore: FileManagerPracticeProgressStore
+    let practiceProgressStore: any PracticeProgressStoring
     let bankDatabase: BankDatabase?
     /// Bumped whenever the local bank is deleted (我的 > 删除题库) so every
     /// PracticeBankViewModel instance (练习 tab and 我的 tab create their own)
@@ -39,8 +39,8 @@ final class AppState {
     private(set) var bankResetVersion = 0
 
     init(api: APIClient = APIClient(), bankStorage: BankStorage = FileManagerBankStorage(),
-         practiceSessionStore: FileManagerPracticeSessionStore = FileManagerPracticeSessionStore(),
-         practiceProgressStore: FileManagerPracticeProgressStore = FileManagerPracticeProgressStore(),
+         practiceSessionStore: any PracticeSessionStoring = FileManagerPracticeSessionStore(),
+         practiceProgressStore: any PracticeProgressStoring = FileManagerPracticeProgressStore(),
          bankDatabase: BankDatabase? = nil) {
         self.api = api
         self.cookieCloudSync = CookieCloudSync(cookieStore: api.cookieStore)
@@ -180,8 +180,15 @@ final class AppState {
     /// 本地库被内容替换(导入题库)后通知所有题库 VM 重读——与 deleteBank 共用
     /// 同一个信号:VM 收到后重置 phase 并 ensureBankReady()(这次会读到新库而
     /// 不是重爬),练习会话与进度注册表随之清空(旧题 ID 已无意义)。
+    /// 清档必须由 AppState 自己完成,不能只挂在练习 tab 的 VM 上(§4.2):该 tab
+    /// 可能从未打开、被隐藏,或没有任何 VM 存在,那时没有任何 onChange 会去清,
+    /// 旧 answeredIDs 与错题就留给了新库。错题搭车进度注册表,一起清。
+    /// 两条 clear 与 deleteBank 同语义(actor 上的 fire-and-forget,失败静默)
+    /// ——下一次落盘会重写整个文件。
     func notifyBankChanged() {
         bankResetVersion += 1
+        Task { try? await practiceSessionStore.clear() }
+        Task { try? await practiceProgressStore.clear() }
     }
 
     func deleteBank() {

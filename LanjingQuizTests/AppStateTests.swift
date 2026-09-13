@@ -39,4 +39,42 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertEqual(appState.route, .examList, "启动导入完成后不应覆盖「跳过」进入主界面的决定")
     }
+
+    /// 设计稿 §4.2:导入题库(我的 > 导入题库)只 bump 版本时,真正清档挂在
+    /// 练习 tab 的 VM 上——该 tab 从未打开或被隐藏就没有 VM 可清,旧会话与旧
+    /// 进度(含错题)原样残留,换成新库后旧题 ID 全成幽灵记录。这里不构造任何
+    /// PracticeBankViewModel,单点验证 notifyBankChanged 自己把两样都清掉。
+    func testNotifyBankChangedClearsSessionAndProgressWithoutAnyViewModel() async throws {
+        let sessionStore = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        let appState = AppState(
+            bankStorage: FakeBankStorage(),
+            practiceSessionStore: sessionStore,
+            practiceProgressStore: progressStore,
+            bankDatabase: try! BankDatabase(inMemory: true)
+        )
+        // 预置:一份未完成的练习存档 + 一条错题(错题搭车进度注册表,任务 1)。
+        let record = WrongRecord(
+            selected: ["A"],
+            wrongCount: 2,
+            lastWrongAt: Date(timeIntervalSince1970: 1_760_000_000),
+            summary: "下列句子中加点成语使用不恰当的一项是"
+        )
+        try await sessionStore.save(
+            PracticeSession(category: "言语理解", subCategory: "成语辨析", questions: [])
+        )
+        try await progressStore.save([
+            "言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1", "q2"], wrong: ["q1": record])
+        ])
+
+        appState.notifyBankChanged()
+
+        XCTAssertEqual(appState.bankResetVersion, 1, "版本照旧要 bump(其他 VM 靠它重读新库)")
+        await sessionStore.awaitClearCount(1)
+        await progressStore.awaitClearCount(1)
+        let clearedSession = await sessionStore.stored
+        let clearedProgress = await progressStore.stored
+        XCTAssertNil(clearedSession, "练习会话存档应被清掉")
+        XCTAssertNil(clearedProgress, "进度注册表(含错题)应被清掉")
+    }
 }
