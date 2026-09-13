@@ -97,6 +97,12 @@ final class AppState {
             // 进度注册表同样清零:入口行回到纯 "N 题" 基线(UI 测试断言)。
             try? await practiceProgressStore.clear()
         }
+        // UI-testing hook: 显示全部四个 tab。默认集合按需求藏起了「考试列表」,
+        // 触碰考试 tab 的既有用例(SkipLoginFlowUITests)需要它。与 -reset-bank
+        // 同用时先复位、再 show-all —— 本块排在复位块之后,顺序即保证。
+        if ProcessInfo.processInfo.arguments.contains("-show-all-tabs") {
+            visibleTabs = Set(HomeTab.displayOrder)
+        }
         // UI-testing hook: 从磁盘上的题库包冷启动导入,让练习流程完全不依赖
         // 网络(不启 mock 上游、不登录)。用法:
         //   app.launchArguments = ["-import-bank", "/abs/path/lanjing-bank-YYYYMMDD.zip"]

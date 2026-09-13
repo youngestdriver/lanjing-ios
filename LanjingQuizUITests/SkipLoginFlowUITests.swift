@@ -2,9 +2,8 @@ import XCTest
 
 /// 登录页「跳过」流程:未登录直接进入主界面并落在「我的」tab;Cookie 云端
 /// 同步未开启时不显示配置输入框,开启后显示;「去登录」可回到登录页。
-/// 与 PracticeFlowUITests 不同,本流程不启动 mock 上游——全程无登录请求;
-/// 以未登录状态进入主界面后,考试列表与练习 tab 均显示「需要登录」占位
-/// (去登录回登录页),不会因无会话请求被踢回登录页(正是跳过成立的前提)。
+/// 标签栏:默认集合(练习/错题本/我的)藏起考试 tab —— 本文件里摸考试 tab
+/// 的用例带 -show-all-tabs 启动;默认集合本身由 testDefaultTabSetHidesExamsTab 钉住。
 @MainActor
 final class SkipLoginFlowUITests: XCTestCase {
 
@@ -12,7 +11,7 @@ final class SkipLoginFlowUITests: XCTestCase {
         continueAfterFailure = false
 
         let app = XCUIApplication()
-        app.launchArguments = ["-reset-bank"]
+        app.launchArguments = ["-reset-bank", "-show-all-tabs"]
         app.launch()
 
         let skip = app.buttons["skip-login"]
@@ -37,6 +36,10 @@ final class SkipLoginFlowUITests: XCTestCase {
         XCTAssertTrue(notLoggedIn.waitForExistence(timeout: 10), "跳过后未落在「我的」tab(未登录 label 缺失)")
         // 「退出登录」只在有会话时出现,未登录态不该有。
         XCTAssertFalse(app.buttons["退出登录"].exists, "未登录时不应出现「退出登录」")
+
+        // 第 4 个 tab「错题本」已接线(默认集合成员)。本用例带 -show-all-tabs
+        // 启动 —— 考试 tab 默认藏起,下面要摸它。
+        XCTAssertTrue(app.tabBars.buttons["错题本"].waitForExistence(timeout: 5), "错题本 tab 缺失")
 
         // 考试列表 tab:未登录应显示「需要登录」占位(与练习页一致),而不是
         // 网络错误文本/被踢回登录页。
@@ -98,6 +101,30 @@ final class SkipLoginFlowUITests: XCTestCase {
         XCTAssertTrue(goLogin.waitForExistence(timeout: 5), "「去登录」按钮缺失")
         goLogin.tap()
         XCTAssertTrue(app.buttons["password-login-entry"].waitForExistence(timeout: 5), "「去登录」未回到登录页")
+    }
+
+    /// 需求默认:标签栏只显示 练习 / 错题本 / 我的,考试 tab 默认藏起
+    /// (考试 tab 的恢复入口在「我的 > 高级」,由任务 6 的 TabVisibilityUITests 覆盖)。
+    func testDefaultTabSetHidesExamsTab() throws {
+        continueAfterFailure = false
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-reset-bank"]
+        app.launch()
+
+        // 无会话 → 点「跳过」进主界面;模拟器残留会话 → 直接就是主界面。
+        // 两条路都到标签栏,本用例只断言集合,不断言落点。
+        let skip = app.buttons["skip-login"]
+        if skip.waitForExistence(timeout: 8) {
+            skip.tap()
+        }
+
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 15), "主界面标签栏未出现")
+        XCTAssertTrue(tabBar.buttons["练习"].waitForExistence(timeout: 5), "默认集合应含练习")
+        XCTAssertTrue(tabBar.buttons["错题本"].waitForExistence(timeout: 5), "默认集合应含错题本")
+        XCTAssertTrue(tabBar.buttons["我的"].waitForExistence(timeout: 5), "「我的」锁定常显")
+        XCTAssertFalse(tabBar.buttons["考试列表"].exists, "默认集合应藏起考试 tab(需求原文)")
     }
 
     /// 不同 iOS 版本的 SwiftUI Toggle 行布局不同(开关位置、行可点击区域),

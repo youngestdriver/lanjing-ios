@@ -2,7 +2,6 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
-    @State private var selectedTab: HomeTab = .exams
 
     var body: some View {
         ZStack {
@@ -16,7 +15,7 @@ struct RootView: View {
                     LoginView(isLaunching: appState.route == .launching)
                         .transition(.opacity)
                 case .examList:
-                    HomeTabView(selectedTab: $selectedTab)
+                    HomeTabView()
                         .transition(.opacity)
                 case .quiz(let exam):
                     QuizView(exam: exam)
@@ -54,39 +53,37 @@ struct RootView: View {
         .task {
             await appState.start()
         }
-        .onChange(of: appState.route) { _, newRoute in
-            // 登录页「跳过」以未登录状态进入主界面:直接落在「我的」tab,
-            // 便于先配置 Cookie 云端同步再登录(正常登录 hasSession 为真,
-            // 不会触发)。其他路由变化不受影响。
-            if case .examList = newRoute, !appState.api.hasSession {
-                selectedTab = .profile
-            }
-        }
     }
 }
 
 private struct HomeTabView: View {
-    @Binding var selectedTab: HomeTab
+    @Environment(AppState.self) private var appState
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            ExamListView()
-                .tabItem {
-                    Label("考试列表", systemImage: "list.bullet.rectangle")
-                }
-                .tag(HomeTab.exams)
+        @Bindable var appState = appState
+        // 可见集合是运行时设置(默认藏起考试):按固定展示序过滤后 ForEach
+        // 生成,不再把三项写死在 TabView 里。tag 用枚举本身 —— 过滤后位置
+        // 会变,Int 下标(0/1/2)会与 tab 错位。
+        TabView(selection: $appState.homeTab) {
+            ForEach(HomeTab.displayOrder.filter(appState.visibleTabs.contains)) { tab in
+                content(for: tab)
+                    .tabItem {
+                        Label(tab.displayName, systemImage: tab.systemImage)
+                    }
+                    .tag(tab)
+            }
+        }
+    }
 
-            PracticeBankView()
-                .tabItem {
-                    Label("练习", systemImage: "target")
-                }
-                .tag(HomeTab.practice)
-
-            ProfileView()
-                .tabItem {
-                    Label("我的", systemImage: "person.crop.circle")
-                }
-                .tag(HomeTab.profile)
+    /// 四个 tab 的根视图。「我的」永远是 ProfileView —— 标签栏显示设置的
+    /// 入口就在「我的 > 高级」里,所以它锁定常显。
+    @ViewBuilder
+    private func content(for tab: HomeTab) -> some View {
+        switch tab {
+        case .exams: ExamListView()
+        case .practice: PracticeBankView()
+        case .wrongBook: WrongBookView(onGoPractice: { appState.select(.practice) })
+        case .profile: ProfileView()
         }
     }
 }
