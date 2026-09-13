@@ -16,6 +16,11 @@ final class AppState {
     }
 
     var route: Route = .launching
+    /// 当前选中的标签栏 tab。由 select(_:) 收口;TabView 直接绑定它。
+    var homeTab: HomeTab
+    /// 标签栏可见集合。本任务先硬编码需求默认集合(练习 / 错题本 / 我的),
+    /// 持久化(我的 > 高级)与 -reset-bank 复位留给任务 6 的 TabSettings。
+    var visibleTabs: Set<HomeTab>
     var theme: Theme
     var autoAdvanceOnCorrect: Bool {
         didSet {
@@ -23,6 +28,17 @@ final class AppState {
         }
     }
     var notice: String?
+
+    /// displayOrder 里第一个可见项(纯函数);空集合回退「我的」。
+    var firstVisibleTab: HomeTab { HomeTab.firstVisible(in: visibleTabs) }
+
+    /// 切换标签栏选中项的唯一入口 —— 程序化跳转(完成页「查看错题本」、
+    /// 空态「去练习」、跳过登录)一律走这里:目标不可见时回退首个可见项,
+    /// 否则会选中一个不存在的 tab,首页空白。
+    func select(_ tab: HomeTab) {
+        homeTab = visibleTabs.contains(tab) ? tab : firstVisibleTab
+    }
+
     let api: APIClient
     let cookieCloudSync: CookieCloudSync
     let bankStorage: BankStorage
@@ -51,6 +67,9 @@ final class AppState {
         // 单元测试宿主与 UI 测试共用同一沙盒容器,真实库会跨运行残留并
         // 互相污染。
         self.bankDatabase = bankDatabase ?? (try? BankDatabase())
+        // 静态初值 = 首个可见项(默认集合下 = 练习):不再靠 onAppear 运行时救场。
+        self.visibleTabs = HomeTab.defaultVisible
+        self.homeTab = HomeTab.firstVisible(in: HomeTab.defaultVisible)
         self.theme = Theme.load()
         self.autoAdvanceOnCorrect = QuizSettings.loadAutoAdvanceOnCorrect()
     }
@@ -124,6 +143,10 @@ final class AppState {
     /// 可配置 Cookie 云端同步并回到登录页。
     func skipLogin() {
         route = .examList
+        // 未登录进主界面时落在「我的」,便于先配置 Cookie 云端同步再登录。
+        // 旧实现是 RootView 观察 route 变化强制切 tab(onChange),现收编到这里:
+        // 选中状态只有一个写入口。
+        select(.profile)
     }
 
     /// 我的 > 外观 > 跟随系统颜色设置. Turning it on remembers the current

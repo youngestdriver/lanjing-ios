@@ -1,11 +1,5 @@
 import SwiftUI
 
-private enum HomeTab: Hashable {
-    case exams
-    case practice
-    case profile
-}
-
 struct RootView: View {
     @Environment(AppState.self) private var appState
     @State private var selectedTab: HomeTab = .exams
