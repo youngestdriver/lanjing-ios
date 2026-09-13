@@ -10,3 +10,6 @@ bank-data/
 
 # OS
 .DS_Store
+
+# SDD 台账/工作区(gitignored 草稿)
+.superpowers/
