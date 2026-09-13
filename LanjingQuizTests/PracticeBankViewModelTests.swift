@@ -823,4 +823,65 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertNil(clearedProgress)
         XCTAssertEqual(vm.answeredCount(category: "言语理解"), 0)
     }
+
+    /// 设计稿 §4.3:我的 tab 侧实例强制刷新成功后必须 bump bankResetVersion——
+    /// 存活的练习 tab 实例靠 PracticeBankView.swift:57-60 的
+    /// .onChange(appState.bankResetVersion) 收到失效信号(bankWasDeleted → 清内存
+    /// 快照 → 重读)。少了这个信号,它手里的陈旧 progress 会在下一次落盘时把
+    /// 已清记录写回复活。本用例复刻那条 onChange:两个实例共用一个 AppState,
+    /// 一个 force 刷新,另一个失效后重答一题,落盘快照不得含旧 ID。
+    func testForceRefreshBumpsResetVersionAndSiblingInstanceCannotResurrect() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        // AppState 侧注入 fake 存储(必须):bump 后 notifyBankChanged 会清 AppState
+        // 侧的档,默认文件存储会删单测宿主沙盒里的真档。这里不对它们断言——
+        // notifyBankChanged 本身由 AppStateTests 覆盖。
+        let appState = AppState(bankStorage: storage,
+                               practiceSessionStore: FakePracticeSessionStore(),
+                               practiceProgressStore: FakePracticeProgressStore(),
+                               bankDatabase: try! BankDatabase(inMemory: true))
+        let database = makeDatabase(categoryTexts: storage.categoryTexts)
+
+        // 练习 tab 的存活实例:已答错 q1,内存快照与注册表里都留着 q1。
+        let practiceSessionStore = FakePracticeSessionStore()
+        let practiceProgressStore = FakePracticeProgressStore()
+        let practiceVM = PracticeBankViewModel(
+            appState: appState, storage: storage,
+            facade: FakePracticeCrawler(categoryTexts: storage.categoryTexts),
+            sessionStore: practiceSessionStore, progressStore: practiceProgressStore,
+            database: database
+        )
+        await practiceVM.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        practiceVM.tapOption("A") // q1 单选答错 → 进度落盘 [q1]
+        await practiceProgressStore.awaitSaveCount(1)
+        XCTAssertEqual(practiceVM.answeredCount(category: "言语理解"), 1)
+
+        // 我的 tab 侧实例执行「更新题库」(force)。
+        let settingsVM = PracticeBankViewModel(
+            appState: appState, storage: storage,
+            facade: FakePracticeCrawler(categoryTexts: storage.categoryTexts),
+            sessionStore: FakePracticeSessionStore(), progressStore: FakePracticeProgressStore(),
+            database: database
+        )
+        await settingsVM.updateBank()
+
+        XCTAssertEqual(appState.bankResetVersion, 1,
+                       "force 成功后必须 bump,否则存活实例收不到失效信号")
+
+        // 复刻 PracticeBankView.swift:57 的 .onChange:存活实例作废旧快照。
+        practiceVM.bankWasDeleted()
+        XCTAssertEqual(practiceVM.answeredCount(category: "言语理解"), 0)
+
+        // 再答一题(q3 多选 A+C):落盘快照只含新题,q1 不会被陈旧内存写回。
+        await practiceVM.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        practiceVM.jumpTo(2)
+        let savesBefore = await practiceProgressStore.saveCount
+        practiceVM.tapOption("A")
+        practiceVM.tapOption("C")
+        practiceVM.confirmSelection()
+        await practiceProgressStore.awaitSaveCount(savesBefore + 1) // 多选只在 confirm 落一次进度
+        let saved = await practiceProgressStore.stored
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q3"],
+                       "陈旧快照不得把已清的 q1 写回")
+    }
 }

@@ -133,6 +133,15 @@ final class PracticeBankViewModel {
                 Task { try? await sessionStore.clear() }
                 progress = [:]
                 Task { try? await progressStore.clear() }
+                // 本次替换把旧题 ID 全作废,但别的存活实例(练习 tab / 错题本)
+                // 还攥着陈旧内存快照,下一次落盘就会把已清记录写回(§4.3)。
+                // bump bankResetVersion → 各自 view 的 .onChange 收到失效信号,
+                // 清快照重读;notifyBankChanged 顺带再清一遍 AppState 侧的会话
+                // 与进度(生产里就是上面两句的同一批对象,清两遍幂等)。
+                // 只在 force 分支发信号:首次爬取不删任何记录,不需要失效;
+                // 也不至于和 ensureBankReady 形成重爬回环(该闸门只在
+                // phase == .idle 时才爬,而 force 之后 phase 是 .ready)。
+                appState.notifyBankChanged()
             }
         } catch is CancellationError {
             // Tab switched away mid-crawl: per-paper meta.papers progress is
