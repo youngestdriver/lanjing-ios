@@ -10,6 +10,15 @@ import XCTest
 @MainActor
 final class HomeTabTests: XCTestCase {
 
+    /// 每个用例前清掉标准域的标签栏设置:任务 6 起 AppState.init 会读
+    /// `tabbar.visible`,而单测宿主与 UI 测试共用同一沙盒容器——不复位的话
+    /// 第二次跑全量时会读到上次残留(UI 用例的 -show-all-tabs / 关练习),
+    /// 「默认集合」「默认落练习」这些断言必红。
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: TabSettings.storageKey)
+    }
+
     private func makeAppState() -> AppState {
         AppState(bankDatabase: try! BankDatabase(inMemory: true))
     }

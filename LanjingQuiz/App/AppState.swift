@@ -18,9 +18,12 @@ final class AppState {
     var route: Route = .launching
     /// 当前选中的标签栏 tab。由 select(_:) 收口;TabView 直接绑定它。
     var homeTab: HomeTab
-    /// 标签栏可见集合。本任务先硬编码需求默认集合(练习 / 错题本 / 我的),
-    /// 持久化(我的 > 高级)与 -reset-bank 复位留给任务 6 的 TabSettings。
-    var visibleTabs: Set<HomeTab>
+    /// 可见 tab 集合(高级 > 标签栏)。写入经 didSet 落盘;init 里由
+    /// TabSettings.load() 载入(净化:缺键/空回落默认、过滤未知 raw、
+    /// 强制并入「我的」)。
+    var visibleTabs: Set<HomeTab> {
+        didSet { TabSettings.save(visibleTabs) }
+    }
     var theme: Theme
     var autoAdvanceOnCorrect: Bool {
         didSet {
@@ -67,9 +70,12 @@ final class AppState {
         // 单元测试宿主与 UI 测试共用同一沙盒容器,真实库会跨运行残留并
         // 互相污染。
         self.bankDatabase = bankDatabase ?? (try? BankDatabase())
-        // 静态初值 = 首个可见项(默认集合下 = 练习):不再靠 onAppear 运行时救场。
-        self.visibleTabs = HomeTab.defaultVisible
-        self.homeTab = HomeTab.firstVisible(in: HomeTab.defaultVisible)
+        // 标签栏:可见集合来自持久化;选中项初值取「加载后的」首个可见项——
+        // 不能停在编译期常量上,否则上次隐藏了「练习」时 homeTab 会指向一个
+        // 不可见的 tab(空白主界面)。
+        let visible = TabSettings.load()
+        self.visibleTabs = visible
+        self.homeTab = HomeTab.displayOrder.first { visible.contains($0) } ?? .profile
         self.theme = Theme.load()
         self.autoAdvanceOnCorrect = QuizSettings.loadAutoAdvanceOnCorrect()
     }
@@ -96,6 +102,14 @@ final class AppState {
             try? await practiceSessionStore.clear()
             // 进度注册表同样清零:入口行回到纯 "N 题" 基线(UI 测试断言)。
             try? await practiceProgressStore.clear()
+            // 标签栏显示设置复位:必须写**内存属性**——AppState 在 App 构造时
+            // 创建、init 已经读过 UserDefaults,这里再 removeObject 对本次运行
+            // 的 visibleTabs 不再有影响。写属性经 didSet 落盘,下次启动同样是
+            // 默认集合。
+            visibleTabs = TabSettings.defaultTabs
+            // 复位后当前选中可能已被隐藏(例如上次只勾了「我的」),走收口
+            // 函数回退到首个可见项,不留空选中。
+            select(homeTab)
         }
         // UI-testing hook: 显示全部四个 tab。默认集合按需求藏起了「考试列表」,
         // 触碰考试 tab 的既有用例(SkipLoginFlowUITests)需要它。与 -reset-bank

@@ -193,6 +193,8 @@ private struct AdvancedSettingsView: View {
 
     var body: some View {
         List {
+            // 标签栏放在最前:它是「入口可见性」设置,比题库/日志更高频。
+            TabBarSettingsSection()
             PracticeBankSettingsSection()
             CookieCloudSection()
             // 退出登录放最后:破坏性、低频,和「我的」首屏同样的条件——
@@ -206,6 +208,58 @@ private struct AdvancedSettingsView: View {
             }
         }
         .navigationTitle("高级")
+    }
+}
+
+/// 高级 > 标签栏:底部标签栏显示哪些入口。默认 {练习, 错题本, 我的}——
+/// 考试列表默认隐藏(需求原文),需要考试时在这里重新打开。
+private struct TabBarSettingsSection: View {
+    @Environment(AppState.self) private var appState
+
+    /// 开关直接读写 appState.visibleTabs(AppState 的 didSet 负责落盘)。
+    private func binding(for tab: HomeTab) -> Binding<Bool> {
+        Binding(
+            get: { appState.visibleTabs.contains(tab) },
+            set: { isOn in
+                if isOn {
+                    appState.visibleTabs.insert(tab)
+                } else {
+                    appState.visibleTabs.remove(tab)
+                }
+                // visibleTabs 赋值不会自动改写 homeTab:隐藏掉当前选中项时
+                // 必须显式收口,否则会停在被隐藏的 tab 上(空白主界面)。
+                appState.select(appState.homeTab)
+            }
+        )
+    }
+
+    var body: some View {
+        Section {
+            // 考试列表也在这里(默认关):「默认隐藏它」是需求,恢复入口必须存在。
+            // identifier 用 rawValue,与契约 tab-settings-toggle-<rawValue> 一致。
+            ForEach(HomeTab.displayOrder.filter { $0 != .profile }) { tab in
+                Toggle(tab.displayName, isOn: binding(for: tab))
+                    .accessibilityIdentifier("tab-settings-toggle-\(tab.rawValue)")
+            }
+            // 「我的」锁定常显:设置入口就在「我的 > 高级」内,可隐藏即自锁。
+            HStack {
+                Text("我的（始终显示）")
+                Spacer()
+                Image(systemName: "lock.fill")
+            }
+            .foregroundStyle(.secondary)
+            Button("恢复默认") {
+                appState.visibleTabs = TabSettings.defaultTabs
+                // 恢复默认同样可能藏起当前选中项(例如先选中考试 tab 再恢复
+                // 默认):走同一句收口。
+                appState.select(appState.homeTab)
+            }
+            .accessibilityIdentifier("tab-settings-reset")
+        } header: {
+            Text("标签栏")
+        } footer: {
+            Text("取消勾选后对应入口从底部标签栏移除。考试列表默认隐藏，需要考试时在这里重新打开；「我的」是设置入口，始终显示。")
+        }
     }
 }
 
