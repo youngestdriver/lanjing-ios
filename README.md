@@ -79,15 +79,16 @@ Bank packages (`LanjingQuiz-bank-*.zip`) are distributed from the main repo's re
 
 ## User Flow
 
-After sign-in, the root screen has three native tabs:
+After sign-in, the root screen has four native tabs. The default visible set is **练习 / 错题本 / 我的**: **Exam List is hidden by default** (an exam can only be started while its tab is visible). Re-enable a single tab, or restore the default set, in 我的 > 高级 > 标签栏:
 
-- **Exam List**: The default tab. It groups available exams and supports starting a new exam or resuming an active one.
+- **Exam List**: Groups available exams and supports starting a new exam or resuming an active one. Not visible by default; turn it on in 我的 > 高级 > 标签栏 (or tap 恢复默认 there to restore the default set).
 - **Practice**: On first use the app **crawls the whole 机考题库 directly from the upstream platform** (every paper, questions with answer keys + 解析) and stores it locally — one JSONL file per category, same format as the main repo's `data/`, with per-paper crawl progress in `meta.json` so an interrupted crawl resumes without re-entering papers. Practice then aggregates the local bank by 一级分类 (大类) → 二级分类 (题型细分, classified locally by the rule engine ported from the main repo's `lib/question-classifier.js`) and runs entirely offline. Answers are graded **locally and never submitted upstream**; crawling a 新开 (wfs=1) paper creates a real upstream attempt that is best-effort-ended after fetching, while 进行中 (wfs=0) papers are read-only and never ended. Practice requires a login session; 我的 > 更新题库 re-crawls **every** paper and atomically replaces the local bank (the old bank stays intact if the refresh fails).
-- **Me**: Theme selection and sign-out.
+- **Wrong Book**: Collects only the questions answered incorrectly in **Practice** (exams never feed it), grouped by 大类 · 题型 with the newest mistake first. A row opens the question with your answer, the correct answer and the analysis. Answering the same question correctly again in Practice removes it automatically. Refreshing, importing or deleting the bank clears the wrong book together with the practice progress — the bank settings section says so explicitly.
+- **Me**: Theme selection, sign-out, and 高级 (bank management, log export, CookieCloud sync and the tab-bar visibility settings).
 
 On iOS 26 and later, the system-provided `TabView` automatically uses Apple's Liquid Glass tab bar. Earlier supported iOS releases use the system tab bar appearance for their platform version.
 
-The quiz flow includes question paging, keyboard navigation on iPad, answer reporting, an answer-card sheet, question marking, and result parsing. The result page returns to the default Exam List tab.
+The quiz flow includes question paging, keyboard navigation on iPad, answer reporting, an answer-card sheet, question marking, and result parsing. The result page returns to the Exam List tab.
 
 ### Abandoning An Exam
 
@@ -101,7 +102,7 @@ After a confirmed upstream completion, the app immediately hides the old active-
 lanjing-ios/                     Repository root
 ├── LanjingQuiz.xcodeproj/       Xcode project
 ├── LanjingQuiz/
-│   ├── App/                     App entry point, route and theme state
+│   ├── App/                     App entry point, route, tab-bar and theme state
 │   ├── Models/                  Exam, question, result and API models
 │   ├── Networking/              Upstream requests, cookies and HTML parsers
 │   ├── Support/                 Design system, formatting and utilities
@@ -122,9 +123,9 @@ Network calls mirror the upstream login, exam-list, enter, answer, mark, submit,
 
 ## Verification
 
-The `LanjingQuizTests` target currently contains 253 unit tests covering answer mapping, exam and result parsing, session expiry detection, login form encoding, rich HTML content, hashing, quiz logic, CookieCloud crypto/conversion (same interop vectors as the web client), the practice 题型细分 classifier (ported from the collector's rule engine), the practice-upstream mapping (paper filtering, section cleaning, state join, DTO → question), and the local bank persistence (incremental append, meta with per-paper crawl progress, JSONL encode/decode round trip in the collector's format).
+The `LanjingQuizTests` target currently contains 304 unit tests covering answer mapping, exam and result parsing, session expiry detection, login form encoding, rich HTML content, hashing, quiz logic, CookieCloud crypto/conversion (same interop vectors as the web client), the practice 题型细分 classifier (ported from the collector's rule engine), the practice-upstream mapping (paper filtering, section cleaning, state join, DTO → question), and the local bank persistence (incremental append, meta with per-paper crawl progress, JSONL encode/decode round trip in the collector's format), the wrong-answer bookkeeping (a wrong answer is recorded once even after an earlier session answered the same question, a later correct answer removes the record, and a legacy progress file without the field still loads), and the tab-bar settings (stored values are sanitized, the default visible set, and the firstVisible / select() fallbacks).
 
-The 8 UI tests in `LanjingQuizUITests` run the whole crawl-and-practice flow end-to-end against an in-process mock upstream (`MockUpstreamServer`, selected via the `LANJING_BASE_URL` launch environment; the local bank is wiped via the `-reset-bank` launch argument so the crawl runs on every execution) — it is hermetic and requires no local server.
+The 17 UI tests in `LanjingQuizUITests` run the whole crawl-and-practice flow end-to-end against an in-process mock upstream (`MockUpstreamServer`, selected via the `LANJING_BASE_URL` launch environment; the local bank is wiped via the `-reset-bank` launch argument so the crawl runs on every execution) — it is hermetic and requires no local server. They additionally cover the wrong book end-to-end (a wrong practice answer shows up with its group/row and a detail page, a later correct answer removes it, and both states survive a relaunch) and the tab-bar visibility settings (hiding a tab moves the selection to the first visible one, the choice survives a relaunch, and 恢复默认 restores the default set).
 
 Before delivering a change, build `LanjingQuiz`, run the test target, and validate affected user flows on a simulator or a signed physical device. Confirming **Abandon** has a real upstream effect, so do not use it as an unattended smoke test.
 
