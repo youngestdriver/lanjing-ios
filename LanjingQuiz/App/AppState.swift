@@ -18,12 +18,22 @@ final class AppState {
     var route: Route = .launching
     /// 当前选中的标签栏 tab。由 select(_:) 收口;TabView 直接绑定它。
     var homeTab: HomeTab
-    /// 可见 tab 集合(高级 > 标签栏)。写入经 didSet 落盘;init 里由
+    /// 可见 tab 集合(高级 > 标签栏)。用户写入经 didSet 落盘;init 里由
     /// TabSettings.load() 载入(净化:缺键/空回落默认、过滤未知 raw、
-    /// 强制并入「我的」)。
+    /// 强制并入「我的」)。UI 测试钩子走 resetTabsForUITest / showAllTabsForUITest,
+    /// 那条路只改内存、不落盘(见 suppressesTabSettingsPersistence)。
     var visibleTabs: Set<HomeTab> {
-        didSet { TabSettings.save(visibleTabs) }
+        didSet {
+            guard !suppressesTabSettingsPersistence else { return }
+            TabSettings.save(visibleTabs)
+        }
     }
+
+    /// UI 测试钩子(-reset-bank / -show-all-tabs)期间抑制落盘:钩子只该改
+    /// 本次运行的行为,不能在标准域里留痕——否则跑完一轮 UI 测试后,模拟器上
+    /// 的 App 会停在最后一次钩子的集合(「四个 tab 全开」),手工启动看到的
+    /// 默认集合就是错的。用户经「高级」改设置的那条路照旧落盘。
+    private var suppressesTabSettingsPersistence = false
     var theme: Theme
     var autoAdvanceOnCorrect: Bool {
         didSet {
@@ -40,6 +50,28 @@ final class AppState {
     /// 否则会选中一个不存在的 tab,首页空白。
     func select(_ tab: HomeTab) {
         homeTab = visibleTabs.contains(tab) ? tab : firstVisibleTab
+    }
+
+    /// UI 测试钩子(-reset-bank)专用:把可见集合复位为默认。只改内存、
+    /// 不落盘——钩子不能在磁盘上留痕(见 suppressesTabSettingsPersistence)。
+    /// 不套 #if DEBUG:纯内存赋值,Release 下留着无副作用,而单测要直接调用
+    /// 它钉住「钩子不落盘」这条契约。
+    func resetTabsForUITest() {
+        applyVisibleTabsForCurrentRun(TabSettings.defaultTabs)
+    }
+
+    /// UI 测试钩子(-show-all-tabs)专用:本次运行显示全部四个 tab。只改
+    /// 内存、不落盘(与 -reset-bank 同一理由)。
+    func showAllTabsForUITest() {
+        applyVisibleTabsForCurrentRun(Set(HomeTab.displayOrder))
+    }
+
+    /// 不经过 didSet 落盘的赋值路径:仅测试钩子使用(上方两个入口);
+    /// 用户经「高级」改设置仍走 visibleTabs 的 didSet,照常持久化。
+    private func applyVisibleTabsForCurrentRun(_ tabs: Set<HomeTab>) {
+        suppressesTabSettingsPersistence = true
+        visibleTabs = tabs
+        suppressesTabSettingsPersistence = false
     }
 
     let api: APIClient
@@ -104,9 +136,10 @@ final class AppState {
             try? await practiceProgressStore.clear()
             // 标签栏显示设置复位:必须写**内存属性**——AppState 在 App 构造时
             // 创建、init 已经读过 UserDefaults,这里再 removeObject 对本次运行
-            // 的 visibleTabs 不再有影响。写属性经 didSet 落盘,下次启动同样是
-            // 默认集合。
-            visibleTabs = TabSettings.defaultTabs
+            // 的 visibleTabs 不再有影响。只改本次运行的内存、不落盘(钩子不留痕,
+            // 见 resetTabsForUITest):否则这次运行会把「复位后的集合」写进用户
+            // 自己的设置里。
+            resetTabsForUITest()
             // 复位后当前选中可能已被隐藏(例如上次只勾了「我的」),走收口
             // 函数回退到首个可见项,不留空选中。
             select(homeTab)
@@ -115,7 +148,7 @@ final class AppState {
         // 触碰考试 tab 的既有用例(SkipLoginFlowUITests)需要它。与 -reset-bank
         // 同用时先复位、再 show-all —— 本块排在复位块之后,顺序即保证。
         if ProcessInfo.processInfo.arguments.contains("-show-all-tabs") {
-            visibleTabs = Set(HomeTab.displayOrder)
+            showAllTabsForUITest()
         }
         // UI-testing hook: 从磁盘上的题库包冷启动导入,让练习流程完全不依赖
         // 网络(不启 mock 上游、不登录)。用法:

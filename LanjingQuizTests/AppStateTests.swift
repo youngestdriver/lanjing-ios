@@ -77,4 +77,36 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(clearedSession, "练习会话存档应被清掉")
         XCTAssertNil(clearedProgress, "进度注册表(含错题)应被清掉")
     }
+
+    /// M7:UI 测试钩子(-reset-bank / -show-all-tabs)只改本次运行的内存,
+    /// 不得把集合写进标准域——否则跑完一轮 UI 测试后模拟器上的 App 会停在
+    /// 「四个 tab 全开」,手工启动看到的就是错的默认集合。钩子对本次运行的
+    /// 效果不变;用户经「高级」改设置的那条路必须照旧落盘(抑制开关不得
+    /// 带坏正常路径)。
+    func testUITestTabHooksDoNotTouchPersistedTabSettings() {
+        let defaults = UserDefaults.standard
+        // 预置一份「用户自己改出来的」设置:钩子跑完必须原样还在。
+        let userChoice = [HomeTab.wrongBook.rawValue, HomeTab.profile.rawValue]
+        defaults.set(userChoice, forKey: TabSettings.storageKey)
+        defer { defaults.removeObject(forKey: TabSettings.storageKey) }
+
+        let appState = AppState(bankDatabase: try! BankDatabase(inMemory: true))
+
+        appState.showAllTabsForUITest()
+        XCTAssertEqual(appState.visibleTabs, Set(HomeTab.displayOrder),
+                       "本次运行应看到全部四个 tab(钩子行为不得变)")
+        XCTAssertEqual(defaults.stringArray(forKey: TabSettings.storageKey), userChoice,
+                       "-show-all-tabs 改动了标准域里的标签栏设置(M7)")
+
+        appState.resetTabsForUITest()
+        XCTAssertEqual(appState.visibleTabs, TabSettings.defaultTabs,
+                       "本次运行应看到默认集合(钩子行为不得变)")
+        XCTAssertEqual(defaults.stringArray(forKey: TabSettings.storageKey), userChoice,
+                       "-reset-bank 改动了标准域里的标签栏设置(M7)")
+
+        // 正常路径(高级 > 标签栏开关/恢复默认)必须仍然落盘。
+        appState.visibleTabs = [.exams, .profile]
+        XCTAssertEqual(defaults.stringArray(forKey: TabSettings.storageKey), ["exams", "profile"],
+                       "用户改设置的正常路径被抑制开关带坏了(不再落盘)")
+    }
 }
