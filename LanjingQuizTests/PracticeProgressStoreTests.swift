@@ -65,6 +65,42 @@ final class PracticeProgressStoreTests: XCTestCase {
         XCTAssertTrue((entry.wrong ?? [:]).isEmpty, "无 wrong 键时应视为空")
     }
 
+    /// I2:持久化键必须被字面量 JSON 钉死。两条往返用例两端都用同一份合成
+    /// Codable——把 "wrong" 改名(或改 WrongRecord 的字段名)这种重构会全绿,
+    /// 线上用户文件里的错题却因 decodeIfPresent 解不出而静默变空(失败当空,
+    /// 用户看到的是整个错题本消失)。本用例直接喂字面量 JSON,锁死
+    /// "answeredIDs" / "wrong" 与 WrongRecord 四字段名;日期按 Codable 默认
+    /// 编码写(timeIntervalSinceReferenceDate 的数值,非 epoch/ISO8601)。
+    func testStoreDecodesLiteralJSONPinningWrongKeys() async throws {
+        // 781692800 = 1760000000(epoch 秒)- 978307200(2001-01-01 的 epoch 秒)
+        let json = """
+        {
+          "言语理解/成语辨析": {
+            "answeredIDs": ["q1", "q2"],
+            "wrong": {
+              "q1": {
+                "selected": ["B", "C"],
+                "wrongCount": 3,
+                "lastWrongAt": 781692800,
+                "summary": "下列句子中加点成语使用不恰当的一项是"
+              }
+            }
+          }
+        }
+        """
+        try Data(json.utf8).write(to: progressFileURL)
+
+        let loaded = await store().load()
+        let entry = try XCTUnwrap(loaded?["言语理解/成语辨析"])
+        XCTAssertEqual(entry.answeredIDs, ["q1", "q2"])
+        let record = try XCTUnwrap(entry.wrong?["q1"], "字面量 JSON 的 wrong/q1 没有解出(持久化键被改名?)")
+        XCTAssertEqual(record.selected, ["B", "C"])
+        XCTAssertEqual(record.wrongCount, 3)
+        XCTAssertEqual(record.lastWrongAt, Date(timeIntervalSinceReferenceDate: 781_692_800))
+        XCTAssertEqual(record.summary, "下列句子中加点成语使用不恰当的一项是")
+        XCTAssertEqual(entry.wrong?.count, 1)
+    }
+
     /// 错题随进度整包往返:WrongRecord 四个字段逐一相等。
     func testStoreSaveLoadRoundTripWithWrongRecords() async throws {
         let store = store()
