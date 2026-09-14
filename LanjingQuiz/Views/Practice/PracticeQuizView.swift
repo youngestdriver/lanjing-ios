@@ -13,6 +13,9 @@ struct PracticeQuizView: View {
     let subCategory: String
 
     @Environment(\.dismiss) private var dismiss
+    /// 完成页「查看错题本」入口用(设计稿 §3.4):程序化跳转必须过
+    /// AppState.select 收口,目标 tab 不可见时自动回退 firstVisibleTab。
+    @Environment(AppState.self) private var appState
     @State private var showAnswerCard = false
     /// 跟手翻页的累计位移;悬停期间驱动页面平移,松手后归零(吸附动画)。
     @State private var dragOffset: CGFloat = 0
@@ -344,6 +347,15 @@ struct PracticeQuizView: View {
                 dismiss()
             }
             .buttonStyle(KeycapButtonStyle(color: DS.accent, radius: DS.radiusSM))
+            // 完成页入口(设计稿 §3.3):先收场——endSession 清掉已完成的存档、
+            // dismiss 把练习页从导航栈里弹出(回到练习 tab 时停在题型列表,
+            // 而不是一场已收掉的完成页),再走 AppState.select 收口切到错题本。
+            Button("查看错题本") {
+                vm.endSession()
+                dismiss()
+                appState.select(.wrongBook)
+            }
+            .buttonStyle(KeycapButtonStyle(color: DS.blue, radius: DS.radiusSM))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
