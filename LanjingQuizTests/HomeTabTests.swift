@@ -19,6 +19,15 @@ final class HomeTabTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: TabSettings.storageKey)
     }
 
+    /// 收尾同样清标准域:visibleTabs 的 didSet 每次赋值都落盘,用例内写过的
+    /// 集合(空集合、全开)会留在共享容器的 UserDefaults 里——只删不扫尾
+    /// 等于把污染转移给下一次运行(单测宿主与 UI 测试共用同一沙盒容器,
+    /// 手工启动 App 也会读到)。移除后 super.tearDown() 照常收尾。
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: TabSettings.storageKey)
+        super.tearDown()
+    }
+
     private func makeAppState() -> AppState {
         AppState(bankDatabase: try! BankDatabase(inMemory: true))
     }
