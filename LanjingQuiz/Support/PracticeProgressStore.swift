@@ -16,6 +16,15 @@ struct WrongRecord: Codable, Equatable, Sendable {
     var wrongCount: Int // 累计答错次数
     var lastWrongAt: Date // 最近一次答错时间
     var summary: String // 采集时解码好的纯文本摘要
+    var isFavorite: Bool? = false // 是否收藏(可选字段,兼容旧存档)
+
+    init(selected: [String], wrongCount: Int, lastWrongAt: Date, summary: String, isFavorite: Bool? = false) {
+        self.selected = selected
+        self.wrongCount = wrongCount
+        self.lastWrongAt = lastWrongAt
+        self.summary = summary
+        self.isFavorite = isFavorite
+    }
 }
 
 /// Answered-progress for one 题型细分. Keyed in the registry file by

@@ -355,7 +355,8 @@ final class PracticeBankViewModel {
                 selected: selected.sorted(),
                 wrongCount: (previous?.wrongCount ?? 0) + 1,
                 lastWrongAt: Date(),
-                summary: HTMLText.summary(from: question.question)
+                summary: HTMLText.summary(from: question.question),
+                isFavorite: previous?.isFavorite ?? false
             )
             entry.wrong = wrong
             wrongChanged = true

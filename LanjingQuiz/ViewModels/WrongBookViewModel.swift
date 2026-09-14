@@ -21,6 +21,8 @@ final class WrongBookViewModel {
             PracticeSession.PracticeAnswer(selected: Set(record.selected),
                                            revealed: true, correct: false)
         }
+
+        var isFavorite: Bool { record.isFavorite ?? false }
     }
 
     /// 一个「大类 · 题型」分组。subCategory 保留存档里的原始值(空串 =
@@ -42,7 +44,11 @@ final class WrongBookViewModel {
         let record: WrongRecord
     }
 
+    static let favoritesGroupID = "__favorites__"
+
     private(set) var groups: [Group] = []
+    private var progress: [String: PracticeProgress] = [:]
+    var collapsedGroupIDs: Set<String> = []
 
     /// 首次读档是否完成:视图靠它区分「加载中」与「真的没有错题」。
     private(set) var hasLoaded = false
@@ -59,6 +65,72 @@ final class WrongBookViewModel {
 
     var isEmpty: Bool { groups.isEmpty }
 
+    /// 所有被收藏的错题,按最近答错时间倒序。
+    var favoriteItems: [Item] {
+        let all = groups.flatMap(\.items).filter(\.isFavorite)
+        return all.sorted { first, second in
+            if first.record.lastWrongAt != second.record.lastWrongAt {
+                return first.record.lastWrongAt > second.record.lastWrongAt
+            }
+            return first.id < second.id
+        }
+    }
+
+    func isFavorite(id: String) -> Bool {
+        for group in groups {
+            if let item = group.items.first(where: { $0.id == id }) {
+                return item.isFavorite
+            }
+        }
+        return false
+    }
+
+    func isCollapsed(_ groupID: String) -> Bool {
+        collapsedGroupIDs.contains(groupID)
+    }
+
+    func toggleCollapse(_ groupID: String) {
+        if collapsedGroupIDs.contains(groupID) {
+            collapsedGroupIDs.remove(groupID)
+        } else {
+            collapsedGroupIDs.insert(groupID)
+        }
+    }
+
+    /// 切换某道题的收藏状态,并持久化到存档。
+    func toggleFavorite(id: String) async {
+        var modified = false
+        for (key, var entry) in progress {
+            guard var wrong = entry.wrong, var record = wrong[id] else { continue }
+            let current = record.isFavorite ?? false
+            record.isFavorite = !current
+            wrong[id] = record
+            entry.wrong = wrong
+            progress[key] = entry
+            modified = true
+            break
+        }
+        guard modified else { return }
+        groups = Self.buildGroups(progress: progress, database: database)
+        try? await progressStore.save(progress)
+    }
+
+    /// 从错题本删除某道题,并持久化到存档。
+    func delete(id: String) async {
+        var modified = false
+        for (key, var entry) in progress {
+            guard var wrong = entry.wrong, wrong[id] != nil else { continue }
+            wrong.removeValue(forKey: id)
+            entry.wrong = wrong
+            progress[key] = entry
+            modified = true
+            break
+        }
+        guard modified else { return }
+        groups = Self.buildGroups(progress: progress, database: database)
+        try? await progressStore.save(progress)
+    }
+
     /// 按 id 取一条错题(详情页路由只携带 id,进入时在此解析)。已不在错题里的
     /// 题号返回 nil——调用方显示占位,而不是空屏。
     func item(id: String) -> Item? {
@@ -73,7 +145,8 @@ final class WrongBookViewModel {
     /// 重调即自愈。
     func load() async {
         let stored = await progressStore.load()
-        groups = Self.buildGroups(progress: stored ?? [:], database: database)
+        progress = stored ?? [:]
+        groups = Self.buildGroups(progress: progress, database: database)
         hasLoaded = true
     }
 

@@ -141,6 +141,86 @@ final class WrongBookUITests: XCTestCase {
                       "重启后被移出的错题复活")
     }
 
+    /// 验证收藏夹顶部常驻、右滑收藏与删除、分类折叠展开。
+    func testWrongBookFavoriteSwipeAndDeleteAndCollapse() throws {
+        continueAfterFailure = false
+
+        let server = MockUpstreamServer()
+        try server.start()
+        defer { server.stop() }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["LANJING_BASE_URL"] = "http://127.0.0.1:\(server.port)"
+        app.launchArguments = ["-reset-bank"]
+        app.launch()
+        logInIfNeeded(app)
+
+        // 1. 练习答错 q1
+        enterSubcategory("成语辨析", app: app)
+        let header1 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(header1.waitForExistence(timeout: 10))
+
+        let wrongOption = optionButton(app, "B")
+        XCTAssertTrue(wrongOption.waitForExistence(timeout: 5))
+        wrongOption.tap()
+        tapNext(app, "下一题")
+        answerCurrentQuestion(app, letter: "A", advance: "下一题")
+        answerCurrentQuestion(app, letter: "A", advance: "完成")
+        XCTAssertTrue(app.staticTexts["练习完成"].waitForExistence(timeout: 10))
+
+        // 2. 进入错题本
+        let entry = app.buttons["查看错题本"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+
+        // 3. 验证顶部「收藏夹」分类存在
+        let favHeader = app.staticTexts["收藏夹"].firstMatch
+        XCTAssertTrue(favHeader.waitForExistence(timeout: 10), "错题本顶部没有「收藏夹」分类")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '暂无收藏错题'")).firstMatch.waitForExistence(timeout: 5), "空收藏夹应有提示")
+
+        // 4. 找到错题行
+        let wrongRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'wrong-row-'"))
+            .firstMatch
+        XCTAssertTrue(wrongRow.waitForExistence(timeout: 10))
+        waitForHittable(wrongRow)
+
+        // 5. 左划错题显示收藏与删除
+        wrongRow.swipeLeft()
+        let favButton = app.buttons["收藏"].firstMatch
+        let delButton = app.buttons["删除"].firstMatch
+        XCTAssertTrue(favButton.waitForExistence(timeout: 5), "左划没有出现「收藏」按钮")
+        XCTAssertTrue(delButton.waitForExistence(timeout: 5), "左划没有出现「删除」按钮")
+
+        // 点击收藏
+        favButton.tap()
+
+        // 收藏夹中出现该题
+        let favRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'favorite-row-'"))
+            .firstMatch
+        XCTAssertTrue(favRow.waitForExistence(timeout: 5), "收藏后收藏夹中未出现题目")
+
+        // 6. 测试折叠与展开题型分类
+        let groupHeader = app.staticTexts["言语理解 · 成语辨析"].firstMatch
+        XCTAssertTrue(groupHeader.waitForExistence(timeout: 5))
+        groupHeader.tap() // 折叠
+        XCTAssertTrue(waitForDisappearance(wrongRow, timeout: 5), "折叠后错题行应收起")
+
+        groupHeader.tap() // 再次点击展开
+        XCTAssertTrue(wrongRow.waitForExistence(timeout: 5), "展开后错题行应重新显示")
+
+        // 7. 测试删除
+        waitForHittable(wrongRow)
+        wrongRow.swipeLeft()
+        let delButtonAgain = app.buttons["删除"].firstMatch
+        XCTAssertTrue(delButtonAgain.waitForExistence(timeout: 5))
+        delButtonAgain.tap()
+
+        // 删除后错题本应进入空态
+        XCTAssertTrue(app.buttons["去练习"].waitForExistence(timeout: 10), "删除错题后应进入空态")
+    }
+
     // MARK: - Helpers
 
     /// 练习 tab → 大类行 → 题型行(每级都等自己的内容出现;与

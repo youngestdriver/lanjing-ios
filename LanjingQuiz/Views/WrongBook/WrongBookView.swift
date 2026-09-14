@@ -55,27 +55,118 @@ struct WrongBookView: View {
 
     // MARK: - 列表
 
-    /// 按「大类 · 题型」分组(组标题即该文字);行 = 摘要 + 「错 N 次」+ 相对时间。
+    /// 错题本列表:
+    /// 1. 顶部为「收藏夹」分类;
+    /// 2. 下方为「大类 · 题型」分类;
+    /// 3. 所有分类均可折叠展开;
+    /// 4. 每道错题可左划显示黄色星星「收藏/取消收藏」与垃圾桶「删除」。
     private func list(_ vm: WrongBookViewModel) -> some View {
         List {
+            favoritesSection(vm)
+
             ForEach(vm.groups) { group in
-                Section {
-                    ForEach(group.items) { item in
+                groupSection(group, vm: vm)
+            }
+        }
+    }
+
+    private func favoritesSection(_ vm: WrongBookViewModel) -> some View {
+        Section {
+            DisclosureGroup(isExpanded: Binding(
+                get: { !vm.isCollapsed(WrongBookViewModel.favoritesGroupID) },
+                set: { _ in
+                    withAnimation {
+                        vm.toggleCollapse(WrongBookViewModel.favoritesGroupID)
+                    }
+                }
+            )) {
+                if vm.favoriteItems.isEmpty {
+                    Text("暂无收藏错题（可左划错题添加收藏）")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(vm.favoriteItems) { item in
                         NavigationLink(value: item.id) {
                             row(item)
                         }
-                        // e2e 锚点:UI 测试点行进详情(名字不得改)。
-                        .accessibilityIdentifier("wrong-row-\(item.id)")
+                        .accessibilityIdentifier("favorite-row-\(item.id)")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            swipeButtons(for: item, vm: vm)
+                        }
                     }
-                } header: {
-                    Text(group.title)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(.yellow)
+                    Text("收藏夹")
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Text("\(vm.favoriteItems.count)")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
                 }
             }
         }
     }
 
+    private func groupSection(_ group: WrongBookViewModel.Group, vm: WrongBookViewModel) -> some View {
+        Section {
+            DisclosureGroup(isExpanded: Binding(
+                get: { !vm.isCollapsed(group.id) },
+                set: { _ in
+                    withAnimation {
+                        vm.toggleCollapse(group.id)
+                    }
+                }
+            )) {
+                ForEach(group.items) { item in
+                    NavigationLink(value: item.id) {
+                        row(item)
+                    }
+                    // e2e 锚点:UI 测试点行进详情(名字不得改)。
+                    .accessibilityIdentifier("wrong-row-\(item.id)")
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        swipeButtons(for: item, vm: vm)
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(group.title)
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Text("\(group.items.count)")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func swipeButtons(for item: WrongBookViewModel.Item, vm: WrongBookViewModel) -> some View {
+        Button(role: .destructive) {
+            Task { await vm.delete(id: item.id) }
+        } label: {
+            Label("删除", systemImage: "trash")
+        }
+
+        Button {
+            Task { await vm.toggleFavorite(id: item.id) }
+        } label: {
+            Label(item.isFavorite ? "取消收藏" : "收藏",
+                  systemImage: item.isFavorite ? "star.slash.fill" : "star.fill")
+        }
+        .tint(.yellow)
+    }
+
     private func row(_ item: WrongBookViewModel.Item) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if item.isFavorite {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.yellow)
+            }
             Text(item.record.summary.isEmpty ? "（题干无文本）" : item.record.summary)
                 .font(.system(size: 15))
                 .lineLimit(2)

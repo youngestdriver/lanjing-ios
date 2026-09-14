@@ -282,4 +282,114 @@ final class WrongBookViewModelTests: XCTestCase {
         XCTAssertEqual(item.replayAnswer.correct, false)
         XCTAssertEqual(item.replayAnswer.selected, ["A"])
     }
+
+    // MARK: - 收藏、删除与折叠
+
+    /// 错题可切换收藏状态,且自动落盘到 progressStore,收藏列表按最近答错时间倒序。
+    func testFavoriteToggleAndPersist() async throws {
+        let questions = [makeQuestion("q1"), makeQuestion("q2")]
+        let (vm, store) = await makeVM(
+            progress: ["言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q1", "q2"],
+                wrong: [
+                    "q1": makeRecord(lastWrongAt: -100),
+                    "q2": makeRecord(lastWrongAt: -50),
+                ]
+            )],
+            questions: questions
+        )
+        await vm.load()
+
+        XCTAssertTrue(vm.favoriteItems.isEmpty)
+        XCTAssertFalse(vm.isFavorite(id: "q1"))
+        XCTAssertFalse(vm.isFavorite(id: "q2"))
+
+        // 收藏 q1
+        await vm.toggleFavorite(id: "q1")
+        XCTAssertTrue(vm.isFavorite(id: "q1"))
+        XCTAssertEqual(vm.favoriteItems.map(\.id), ["q1"])
+
+        // 验证持久化
+        let saved1 = await store.load()
+        XCTAssertEqual(saved1?["言语理解/成语辨析"]?.wrong?["q1"]?.isFavorite, true)
+
+        // 收藏 q2(时间更近,应排最前)
+        await vm.toggleFavorite(id: "q2")
+        XCTAssertEqual(vm.favoriteItems.map(\.id), ["q2", "q1"])
+
+        // 取消收藏 q1
+        await vm.toggleFavorite(id: "q1")
+        XCTAssertFalse(vm.isFavorite(id: "q1"))
+        XCTAssertEqual(vm.favoriteItems.map(\.id), ["q2"])
+
+        let saved2 = await store.load()
+        XCTAssertEqual(saved2?["言语理解/成语辨析"]?.wrong?["q1"]?.isFavorite, false)
+        XCTAssertEqual(saved2?["言语理解/成语辨析"]?.wrong?["q2"]?.isFavorite, true)
+    }
+
+    /// 删除错题:从错题本与收藏夹中同步移除,并落盘到 progressStore。
+    func testDeleteQuestionAndPersist() async throws {
+        let questions = [makeQuestion("q1"), makeQuestion("q2")]
+        let (vm, store) = await makeVM(
+            progress: ["言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q1", "q2"],
+                wrong: [
+                    "q1": WrongRecord(selected: ["A"], wrongCount: 1, lastWrongAt: now.addingTimeInterval(-100), summary: "q1", isFavorite: true),
+                    "q2": makeRecord(lastWrongAt: -50),
+                ]
+            )],
+            questions: questions
+        )
+        await vm.load()
+
+        XCTAssertEqual(vm.favoriteItems.map(\.id), ["q1"])
+        XCTAssertEqual(vm.groups.first?.items.map(\.id), ["q2", "q1"])
+
+        // 删除 q1
+        await vm.delete(id: "q1")
+        XCTAssertNil(vm.item(id: "q1"))
+        XCTAssertEqual(vm.groups.first?.items.map(\.id), ["q2"])
+        XCTAssertTrue(vm.favoriteItems.isEmpty, "删除已收藏错题后,收藏夹中也必须移除")
+
+        // 验证磁盘存档
+        let saved = await store.load()
+        XCTAssertNil(saved?["言语理解/成语辨析"]?.wrong?["q1"])
+        XCTAssertNotNil(saved?["言语理解/成语辨析"]?.wrong?["q2"])
+
+        // 删除 q2:全部删除后进入空态
+        await vm.delete(id: "q2")
+        XCTAssertTrue(vm.groups.isEmpty)
+        XCTAssertTrue(vm.isEmpty)
+    }
+
+    /// 题型分类与收藏夹支持折叠与展开,默认不折叠。
+    func testCollapseAndExpandCategories() async {
+        let questions = [makeQuestion("q1")]
+        let (vm, _) = await makeVM(
+            progress: ["言语理解/成语辨析": PracticeProgress(
+                answeredIDs: ["q1"],
+                wrong: ["q1": makeRecord(lastWrongAt: -100)]
+            )],
+            questions: questions
+        )
+        await vm.load()
+
+        let categoryID = "言语理解/成语辨析"
+        let favID = WrongBookViewModel.favoritesGroupID
+
+        XCTAssertFalse(vm.isCollapsed(categoryID), "默认展开")
+        XCTAssertFalse(vm.isCollapsed(favID), "收藏夹默认展开")
+
+        // 折叠题型分类
+        vm.toggleCollapse(categoryID)
+        XCTAssertTrue(vm.isCollapsed(categoryID))
+
+        // 折叠收藏夹
+        vm.toggleCollapse(favID)
+        XCTAssertTrue(vm.isCollapsed(favID))
+
+        // 再次点击展开
+        vm.toggleCollapse(categoryID)
+        XCTAssertFalse(vm.isCollapsed(categoryID))
+    }
 }
