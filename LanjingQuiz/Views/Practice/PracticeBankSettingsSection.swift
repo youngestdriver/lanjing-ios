@@ -56,6 +56,8 @@ struct PracticeBankSettingsSection: View {
             }
         } header: {
             Text("题库")
+        } footer: {
+            Text("更新或删除题库会同时清空练习进度与错题本")
         }
         .confirmationDialog(
             "删除本地题库？",
@@ -67,7 +69,7 @@ struct PracticeBankSettingsSection: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("本地题库将被清空（含爬取日志），再次进入练习页会重新从蓝鲸平台爬取全部试卷，每张新卷占用一次作答机会并自动结束。")
+            Text("本地题库将被清空（含爬取日志），再次进入练习页会重新从蓝鲸平台爬取全部试卷，每张新卷占用一次作答机会并自动结束。同时清空练习进度与错题本。")
         }
 
         Section {
