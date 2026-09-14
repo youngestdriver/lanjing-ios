@@ -57,7 +57,10 @@ struct PracticeBankSettingsSection: View {
         } header: {
             Text("题库")
         } footer: {
-            Text("更新或删除题库会同时清空练习进度与错题本")
+            // 三条路径都会清 session+progress(含错题):更新/删除走
+            // deleteBank/VM,导入走 notifyBankChanged(AppState 里统一清)。
+            // footer 必须三条都明示,只写「更新或删除」会让导入静默清空。
+            Text("更新、导入或删除题库会同时清空练习进度与错题本")
         }
         .confirmationDialog(
             "删除本地题库？",
@@ -69,7 +72,7 @@ struct PracticeBankSettingsSection: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("本地题库将被清空（含爬取日志），再次进入练习页会重新从蓝鲸平台爬取全部试卷，每张新卷占用一次作答机会并自动结束。同时清空练习进度与错题本。")
+            Text("本地题库将被清空（含爬取日志），再次进入练习页会重新从蓝鲸平台爬取全部试卷，每张新卷占用一次作答机会并自动结束。删除题库会同时清空练习进度与错题本。")
         }
 
         Section {
@@ -123,7 +126,10 @@ struct PracticeBankSettingsSection: View {
             let summary = try await BankImporter.run(
                 packageAt: url, database: database, storage: appState.bankStorage
             )
-            importStatus = summary.message
+            // 追加清空提示:notifyBankChanged 会清掉练习会话与进度注册表
+            // (错题搭车其中),这条副作用必须告诉用户——summary.message 由
+            // BankImporter 生成,不含清档语义,故在这里拼接。
+            importStatus = summary.message + "（练习进度与错题本已清空）"
             // 练习 tab 的 VM 收到信号后重读本地库(不再重爬)。
             appState.notifyBankChanged()
         } catch {
