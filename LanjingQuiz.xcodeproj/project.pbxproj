@@ -33,6 +33,7 @@
 		5C0B73161F9E6DE9607C18CE /* ExamCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79BCB55F107262197AF9EF9 /* ExamCardView.swift */; };
 		5C34D27814E61D2B1C1CEE6A /* WrongBookUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0D4889F067D9D0EDB910FD3 /* WrongBookUITests.swift */; };
 		6019379F29AA032127A3D612 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDFE012A3AB01CDD9BC0235F /* APIError.swift */; };
+		60D47763790F837C4DF00592 /* FormulaInlinePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500F0914DB72FB95EDB1356 /* FormulaInlinePreview.swift */; };
 		6379B9011D74D50B1349EC8E /* PracticeUpstreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE3F3A3F273301A20F38D05 /* PracticeUpstreamClient.swift */; };
 		642054B71EAF86E39A0EE05A /* PracticeSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D8FFB1EA1CBFDCFC515882 /* PracticeSessionTests.swift */; };
 		64B2639AB5B8958E9C3CEEA6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D7CE52869C6F1ED7D822CB4A /* Assets.xcassets */; };
@@ -76,6 +77,7 @@
 		B43A7FA144F4FD361C45A1F2 /* BatchFailureDiagnosisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06DF772CC79D536723E0BB2B /* BatchFailureDiagnosisTests.swift */; };
 		B65EAB393CCB414D16019BE3 /* BankLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F512FD68645C1849B92BDF /* BankLogic.swift */; };
 		B6C00B4E89A10256A756FB7D /* SkipLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCA5F8DC9D851F41D2DD1B6 /* SkipLoginTests.swift */; };
+		BAAEA267A62CA5CD65FFEF64 /* FormulaInlinePreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA45D83286EA8C66F1A6D35 /* FormulaInlinePreviewTests.swift */; };
 		BDE3C65C32DB85CAA56DD049 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1613A3AFDED5B85859DEFE16 /* LoginView.swift */; };
 		BFCD0D3496DEFA1596CA5A03 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6188CFE56F186CCECDC684FA /* KeychainHelper.swift */; };
 		C1D291D2218D1C8A3673108A /* ExamHTMLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72877EE1B6AC80597824B95 /* ExamHTMLParser.swift */; };
@@ -191,6 +193,7 @@
 		6C1EFD7DA0B3B88E412BA6B6 /* NeedsLoginPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeedsLoginPlaceholder.swift; sourceTree = "<group>"; };
 		6C66501C84823829FBA3D384 /* CookieStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieStore.swift; sourceTree = "<group>"; };
 		6C8434715CFBE58909B53F42 /* QuizHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuizHeaderView.swift; sourceTree = "<group>"; };
+		6CA45D83286EA8C66F1A6D35 /* FormulaInlinePreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormulaInlinePreviewTests.swift; sourceTree = "<group>"; };
 		6FCA5F8DC9D851F41D2DD1B6 /* SkipLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkipLoginTests.swift; sourceTree = "<group>"; };
 		75E59E75B870A6D27D64E24E /* LanjingQuizApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanjingQuizApp.swift; sourceTree = "<group>"; };
 		789BBCABA747F28137B517C9 /* ExplainBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplainBannerView.swift; sourceTree = "<group>"; };
@@ -218,6 +221,7 @@
 		B72877EE1B6AC80597824B95 /* ExamHTMLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamHTMLParser.swift; sourceTree = "<group>"; };
 		BA058106A80BF880830EF81B /* TabSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSettings.swift; sourceTree = "<group>"; };
 		BA61C913067812855F0BE780 /* ExamListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamListViewModel.swift; sourceTree = "<group>"; };
+		C500F0914DB72FB95EDB1356 /* FormulaInlinePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormulaInlinePreview.swift; sourceTree = "<group>"; };
 		C98E7368EDD9BCEB0BCA5A37 /* PracticeBankView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeBankView.swift; sourceTree = "<group>"; };
 		CA8A084A268820FBA9AFD981 /* ResultPageParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultPageParser.swift; sourceTree = "<group>"; };
 		D7CE52869C6F1ED7D822CB4A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -290,6 +294,7 @@
 				4DB3BE1419753CE217EF72BC /* ExamHTMLParserTests.swift */,
 				4A835D9E0864B2CF6D64282F /* ExamListViewModelTests.swift */,
 				1039294FEB0B4CE1352C3CAF /* Fixtures.swift */,
+				6CA45D83286EA8C66F1A6D35 /* FormulaInlinePreviewTests.swift */,
 				37D041F47271D626E7EE60A4 /* HashingTests.swift */,
 				D83F59A83147776E9AAB669E /* HomeTabTests.swift */,
 				1385F02DE0B472803374B680 /* HTMLTextTests.swift */,
@@ -358,6 +363,7 @@
 				A102BB0CE3FB1B8F9CC75D34 /* DesignSystem.swift */,
 				537D051E4644236232756CB3 /* Extensions.swift */,
 				0364F22B8201AF3CC52F19FE /* Formatters.swift */,
+				C500F0914DB72FB95EDB1356 /* FormulaInlinePreview.swift */,
 				59F40B97D0409BCE50D7C6C5 /* Hashing.swift */,
 				51617D25D6FE8FDA9BD31D32 /* HTMLText.swift */,
 				30200C49DAEDE5C752C3BCBB /* PracticeProgressStore.swift */,
@@ -637,6 +643,7 @@
 				EB7F3643AE61725E98871267 /* ExplainBannerView.swift in Sources */,
 				741E447E0B5AFD95BFE8CBB1 /* Extensions.swift in Sources */,
 				0C66E3A25774391E8339400C /* Formatters.swift in Sources */,
+				60D47763790F837C4DF00592 /* FormulaInlinePreview.swift in Sources */,
 				E2E26FAFBEE2AEF33D2BC149 /* HTMLText.swift in Sources */,
 				A7FCF3B778CDCCAC2B55952A /* Hashing.swift in Sources */,
 				15410BA275A0D1B1330FAF80 /* HomeTab.swift in Sources */,
@@ -711,6 +718,7 @@
 				FF2796CA668A7D9771341E8A /* ExamHTMLParserTests.swift in Sources */,
 				C84ADDB82DFB284274FCFA5E /* ExamListViewModelTests.swift in Sources */,
 				EFDF1B195F2C7100DFFEA962 /* Fixtures.swift in Sources */,
+				BAAEA267A62CA5CD65FFEF64 /* FormulaInlinePreviewTests.swift in Sources */,
 				A972676AABBCBA6BAD60E540 /* HTMLTextTests.swift in Sources */,
 				D696887E947DA6154A1033EC /* HashingTests.swift in Sources */,
 				E5FDA08AE1E8FFE55A3A5E4F /* HomeTabTests.swift in Sources */,

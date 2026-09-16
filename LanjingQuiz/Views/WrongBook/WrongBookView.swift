@@ -167,9 +167,13 @@ struct WrongBookView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.yellow)
             }
-            Text(item.record.summary.isEmpty ? "（题干无文本）" : item.record.summary)
-                .font(.system(size: 15))
-                .lineLimit(2)
+            // 带图摘要:行内公式图按行高内联(数字运算的「与〔公式〕相加……」),
+            // 无图题与旧纯文本摘要一致;`record.summary` 留在存档里不再参与显示。
+            FormulaInlineRowPreview(html: item.question.question)
+                // e2e 锚点:UI 测试按它断言行预览的文本与含图标注(名字不得改)。
+                // 前缀刻意避开 "wrong-row-":那是整行的标识前缀,共用会让按前缀
+                // 找行的既有用例(firstMatch)命中预览这一层。
+                .accessibilityIdentifier("row-preview-\(item.id)")
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 4) {
                 Text("错 \(item.record.wrongCount) 次")

@@ -223,19 +223,26 @@ struct HTMLText: View {
     /// `&nbsp;` / `&ldquo;` 会以字面量形式进摘要(视觉乱码)。
     /// nonisolated 同 `plainText`:纯字符串处理,调用方不限隔离域。
     nonisolated static func summary(from html: String, limit: Int = 80) -> String {
+        let compressed = plainSummaryText(from: html)
+        guard compressed.count > limit else { return compressed }
+        // prefix 按 Character(字素簇)计,emoji 不会被切进 ZWJ 序列。
+        return String(compressed.prefix(limit)) + "…"
+    }
+
+    /// 摘要口径的净化(**不截断**):块级边界换空格 → 剥标签 + 解实体 → 空白压缩。
+    /// 截断是行渲染自己的事;错题本的「带图摘要」(FormulaInlinePreview)按 `<img>`
+    /// 把 HTML 切段后逐段走这里,保证同一段文本与 summary 逐字一致。
+    nonisolated static func plainSummaryText(from html: String) -> String {
         // 块级边界(</p>、<br>、<br/>)先换成空格,避免相邻块的文字粘在一起。
         let spaced = html.replacingOccurrences(
             of: #"<br\s*/?>|</p>"#,
             with: " ",
             options: [.regularExpression, .caseInsensitive]
         )
-        let compressed = decodeEntities(plainText(spaced))
+        return decodeEntities(plainText(spaced))
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        guard compressed.count > limit else { return compressed }
-        // prefix 按 Character(字素簇)计,emoji 不会被切进 ZWJ 序列。
-        return String(compressed.prefix(limit)) + "…"
     }
 
     /// Decodes the entities the question bank actually uses + numeric refs.

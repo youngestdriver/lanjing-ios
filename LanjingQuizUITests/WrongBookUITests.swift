@@ -315,6 +315,58 @@ final class WrongBookUITests: XCTestCase {
                       "分组标题缺失")
     }
 
+    /// 需求:图题在错题本首页的预览——行内公式图内联进摘要,数字运算的
+    /// 「与〔公式〕相加，其和的个位数字是（ ）。」这类断句行不再突兀。
+    /// mock 的 q4 题干里有一张行内公式图(爬取时随题库下载进本地库)。
+    func testWrongBookRowInlinesFormulaImageInPreview() throws {
+        continueAfterFailure = false
+
+        let server = MockUpstreamServer()
+        try server.start()
+        defer { server.stop() }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["LANJING_BASE_URL"] = "http://127.0.0.1:\(server.port)"
+        app.launchArguments = ["-reset-bank"]
+        app.launch()
+        logInIfNeeded(app)
+
+        // 练习 > 言语理解 > 虚词辨析:第 1 题(q4,题干里有公式图)错选 B。
+        enterSubcategory("虚词辨析", app: app)
+        let header1 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(header1.waitForExistence(timeout: 10), "quiz screen is blank — no question header")
+        let wrongOption = optionButton(app, "B")
+        XCTAssertTrue(wrongOption.waitForExistence(timeout: 5), "option row missing")
+        wrongOption.tap()
+        XCTAssertTrue(app.buttons["option-B-wrong"].waitForExistence(timeout: 5), "q4 错选 B 没有判错标红")
+
+        // 原路退回题库根(练习栈里 tab 栏是隐藏的),切错题本。
+        let quizBar = app.navigationBars["虚词辨析"]
+        XCTAssertTrue(quizBar.waitForExistence(timeout: 5), "quiz nav bar missing")
+        let back = quizBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "back button missing")
+        back.tap()
+        let subListBar = app.navigationBars["言语理解"]
+        XCTAssertTrue(subListBar.waitForExistence(timeout: 5), "subcategory list never reappeared")
+        let backToRoot = subListBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(backToRoot.waitForExistence(timeout: 5), "back button missing in subcategory list")
+        backToRoot.tap()
+
+        let wrongBookTab = app.tabBars.buttons["错题本"]
+        XCTAssertTrue(wrongBookTab.waitForExistence(timeout: 5), "回到题库根后 tab 栏没有恢复")
+        wrongBookTab.tap()
+
+        // 行预览:文本保留 + 内联公式图(无障碍标签带「含 N 张公式图」)。
+        let preview = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'row-preview-q4'"))
+            .firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 10), "错题本里没有 q4 的行预览")
+        XCTAssertTrue(preview.label.contains("下列各句中") && preview.label.contains("关联词"),
+                      "行预览文本丢失(实际标签:\(preview.label))")
+        XCTAssertTrue(preview.label.contains("含 1 张公式图"),
+                      "行预览没有内联公式图(实际标签:\(preview.label))")
+    }
+
     // MARK: - Helpers
 
     /// 练习 tab → 大类行 → 题型行(每级都等自己的内容出现;与
