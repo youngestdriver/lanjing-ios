@@ -2,8 +2,9 @@ import Foundation
 import Observation
 
 /// 错题本(设计 §3.3):自足读取练习进度存档里的错题记录,按「大类 · 题型」
-/// 分组、组内按 lastWrongAt 倒序。本页**只读**——错题的写入/移出全部由练习
-/// 判分漏斗完成(PracticeBankViewModel.recordAnswered),错题本不参与判分。
+/// 分组、组内按 lastWrongAt 倒序。判分/收录的写入方只有练习漏斗
+/// (PracticeBankViewModel.recordAnswered),错题本不参与判分——它只维护条目
+/// 本身(删除 / 收藏),且与练习一样经存档的原子变更写入,不写整表快照。
 @MainActor
 @Observable
 final class WrongBookViewModel {
@@ -99,36 +100,34 @@ final class WrongBookViewModel {
 
     /// 切换某道题的收藏状态,并持久化到存档。
     func toggleFavorite(id: String) async {
-        var modified = false
-        for (key, var entry) in progress {
-            guard var wrong = entry.wrong, var record = wrong[id] else { continue }
-            let current = record.isFavorite ?? false
-            record.isFavorite = !current
-            wrong[id] = record
-            entry.wrong = wrong
-            progress[key] = entry
-            modified = true
-            break
+        guard let key = progress.first(where: { $0.value.wrong?[id] != nil })?.key else { return }
+        await apply { registry in
+            guard var record = registry[key]?.wrong?[id] else { return false }
+            record.isFavorite = !(record.isFavorite ?? false)
+            registry[key]?.wrong?[id] = record
+            return true
         }
-        guard modified else { return }
-        groups = Self.buildGroups(progress: progress, database: database)
-        try? await progressStore.save(progress)
     }
 
     /// 从错题本删除某道题,并持久化到存档。
     func delete(id: String) async {
-        var modified = false
-        for (key, var entry) in progress {
-            guard var wrong = entry.wrong, wrong[id] != nil else { continue }
+        guard let key = progress.first(where: { $0.value.wrong?[id] != nil })?.key else { return }
+        await apply { registry in
+            guard var wrong = registry[key]?.wrong, wrong[id] != nil else { return false }
             wrong.removeValue(forKey: id)
-            entry.wrong = wrong
-            progress[key] = entry
-            modified = true
-            break
+            registry[key]?.wrong = wrong
+            return true
         }
-        guard modified else { return }
+    }
+
+    /// 统一写入漏斗:变更闭包先在本地快照上应用一次(界面立即反映),再交给
+    /// 存档在磁盘最新状态上原子重放。**不写整表快照**——练习侧手里可能是旧
+    /// 数据(它的判分只有落盘后这边才知道),整表覆盖会把练习刚收录的错题、
+    /// 已删记录等写回。
+    private func apply(_ mutate: @Sendable (inout [String: PracticeProgress]) -> Bool) async {
+        guard mutate(&progress) else { return }
         groups = Self.buildGroups(progress: progress, database: database)
-        try? await progressStore.save(progress)
+        try? await progressStore.update(mutate)
     }
 
     /// 按 id 取一条错题(详情页路由只携带 id,进入时在此解析)。已不在错题里的

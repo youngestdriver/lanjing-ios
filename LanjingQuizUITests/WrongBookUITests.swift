@@ -221,6 +221,100 @@ final class WrongBookUITests: XCTestCase {
         XCTAssertTrue(app.buttons["去练习"].waitForExistence(timeout: 10), "删除错题后应进入空态")
     }
 
+    /// 回归(用户报告):练习答错一题中途退出 → 错题本把错题删光 → 回练习
+    /// (恢复存档)再答错另一题——被删的那题不得整批复活。练习 VM 手里是旧
+    /// 进度快照,整表落盘曾把错题本刚删的记录写回来。
+    func testDeletedWrongQuestionDoesNotComeBackAfterNextPracticeMistake() throws {
+        continueAfterFailure = false
+
+        let server = MockUpstreamServer()
+        try server.start()
+        defer { server.stop() }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["LANJING_BASE_URL"] = "http://127.0.0.1:\(server.port)"
+        app.launchArguments = ["-reset-bank"]
+        app.launch()
+        logInIfNeeded(app)
+
+        // 1. 练习 > 成语辨析:q1 错选 B(q1 正确答案 A),不推进,直接退出
+        // ——练习侧内存里留着含 q1 错题的旧进度快照。
+        enterSubcategory("成语辨析", app: app)
+        let header1 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(header1.waitForExistence(timeout: 10), "quiz screen is blank — no question header")
+        let wrongOption = optionButton(app, "B")
+        XCTAssertTrue(wrongOption.waitForExistence(timeout: 5), "option row missing")
+        wrongOption.tap()
+        XCTAssertTrue(app.buttons["option-B-wrong"].waitForExistence(timeout: 5), "q1 错选 B 没有判错标红")
+
+        let quizBar = app.navigationBars["成语辨析"]
+        XCTAssertTrue(quizBar.waitForExistence(timeout: 5), "quiz nav bar missing")
+        let back = quizBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "back button missing")
+        back.tap()
+        XCTAssertTrue(waitForDisappearance(quizBar, timeout: 5), "quiz did not pop back to the subcategory list")
+        // 题型列表也隐藏 tab 栏,回到题库根(path 为空)tab 栏才恢复。
+        let subListBar = app.navigationBars["言语理解"]
+        XCTAssertTrue(subListBar.waitForExistence(timeout: 5), "subcategory list never reappeared")
+        let backToRoot = subListBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(backToRoot.waitForExistence(timeout: 5), "back button missing in subcategory list")
+        backToRoot.tap()
+
+        // 2. 错题本:找到 q1 那行,左划删除 → 进入空态。
+        let wrongBookTab = app.tabBars.buttons["错题本"]
+        XCTAssertTrue(wrongBookTab.waitForExistence(timeout: 5), "回到题库根后 tab 栏没有恢复")
+        wrongBookTab.tap()
+
+        let deletedRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'wrong-row-q1'"))
+            .firstMatch
+        XCTAssertTrue(deletedRow.waitForExistence(timeout: 10), "错题本里没有 q1 的错题行")
+        waitForHittable(deletedRow)
+        deletedRow.swipeLeft()
+        let delButton = app.buttons["删除"].firstMatch
+        XCTAssertTrue(delButton.waitForExistence(timeout: 5), "左划没有出现「删除」按钮")
+        delButton.tap()
+        XCTAssertTrue(app.buttons["去练习"].waitForExistence(timeout: 10), "删除错题后应进入空态")
+
+        // 3. 回练习:恢复存档(第 1 题已揭晓),推进到第 2 题错选 B。
+        // 步骤 2 已退回题库根,这里重走 练习 > 言语理解 > 成语辨析。
+        enterSubcategory("成语辨析", app: app)
+
+        // 恢复横幅出现即点掉(可选元素,不挡选项行但保持界面干净)。
+        let bannerDismiss = app.buttons["知道了"]
+        if bannerDismiss.waitForExistence(timeout: 3) { bannerDismiss.tap() }
+
+        let resumedHeader = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(resumedHeader.waitForExistence(timeout: 10), "没有恢复中途退出的练习")
+        tapNext(app, "下一题")
+        let wrongOption2 = optionButton(app, "B")
+        XCTAssertTrue(wrongOption2.waitForExistence(timeout: 5), "第 2 题选项行缺失")
+        wrongOption2.tap() // q2 错选 B(答案是 A)
+        XCTAssertTrue(app.buttons["option-B-wrong"].waitForExistence(timeout: 5), "q2 错选 B 没有判错标红")
+
+        // 4. 错题本:新错题(q2)在,被删的 q1 不得复活。练习栈里 tab 栏隐藏,
+        // 原路退回题库根再切 tab。
+        let quizBar2 = app.navigationBars["成语辨析"]
+        XCTAssertTrue(quizBar2.waitForExistence(timeout: 5), "quiz nav bar missing")
+        let back2 = quizBar2.buttons.element(boundBy: 0)
+        XCTAssertTrue(back2.waitForExistence(timeout: 5), "back button missing")
+        back2.tap()
+        let subListBar2 = app.navigationBars["言语理解"]
+        XCTAssertTrue(subListBar2.waitForExistence(timeout: 5), "subcategory list never reappeared")
+        let backToRoot2 = subListBar2.buttons.element(boundBy: 0)
+        XCTAssertTrue(backToRoot2.waitForExistence(timeout: 5), "back button missing in subcategory list")
+        backToRoot2.tap()
+        XCTAssertTrue(wrongBookTab.waitForExistence(timeout: 5), "回到题库根后 tab 栏没有恢复")
+        wrongBookTab.tap()
+        let newRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'wrong-row-q2'"))
+            .firstMatch
+        XCTAssertTrue(newRow.waitForExistence(timeout: 10), "新答错的 q2 没有进错题本")
+        XCTAssertFalse(deletedRow.exists, "被删除的 q1 被练习的陈旧快照写回复活了")
+        XCTAssertTrue(app.staticTexts["言语理解 · 成语辨析"].firstMatch.waitForExistence(timeout: 5),
+                      "分组标题缺失")
+    }
+
     // MARK: - Helpers
 
     /// 练习 tab → 大类行 → 题型行(每级都等自己的内容出现;与

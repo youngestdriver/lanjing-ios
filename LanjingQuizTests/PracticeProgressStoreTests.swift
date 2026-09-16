@@ -28,12 +28,42 @@ final class PracticeProgressStoreTests: XCTestCase {
         XCTAssertNil(loaded)
     }
 
-    func testStoreSaveLoadRoundTrip() async throws {
+    func testStoreUpdateLoadRoundTrip() async throws {
         let store = store()
         let progress = ["言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1", "q2"])]
-        try await store.save(progress)
+        try await store.update { registry in
+            registry = progress
+            return true
+        }
         let loaded = await store.load()
         XCTAssertEqual(loaded, progress)
+    }
+
+    /// 原子读-改-写:变更应用在**磁盘最新状态**上,而不是任何调用方手里的
+    /// 快照。两个存活实例(练习判分 / 错题本删除)各提交自己的变更时,谁也
+    /// 不会把对方已落盘的记录写回。
+    func testUpdateAppliesToLatestOnDiskState() async throws {
+        let store = store()
+        try await store.update { registry in
+            registry["言语理解/成语辨析"] = PracticeProgress(answeredIDs: ["q1"])
+            return true
+        }
+        // 另一个实例只提交自己知道的变更,不知道磁盘上已有一条。
+        try await store.update { registry in
+            registry["言语理解/其他"] = PracticeProgress(answeredIDs: ["q4"])
+            return true
+        }
+        let loaded = await store.load()
+        XCTAssertEqual(loaded?["言语理解/成语辨析"]?.answeredIDs, ["q1"], "先落的条目不得被后来的变更写没")
+        XCTAssertEqual(loaded?["言语理解/其他"]?.answeredIDs, ["q4"])
+    }
+
+    /// 无变更(闭包返回 false)不落盘:空操作不得凭空生成存档文件。
+    func testUpdateWithoutChangeDoesNotCreateFile() async throws {
+        try await store().update { _ in false }
+        let loaded = await store().load()
+        XCTAssertNil(loaded)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: progressFileURL.path))
     }
 
     func testStoreClearRemovesFile() async throws {
@@ -44,9 +74,10 @@ final class PracticeProgressStoreTests: XCTestCase {
             lastWrongAt: Date(timeIntervalSince1970: 1_760_000_000),
             summary: "下列句子中加点成语使用不恰当的一项是"
         )
-        try await store.save(
-            ["言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1"], wrong: ["q1": record])]
-        )
+        try await store.update { registry in
+            registry["言语理解/成语辨析"] = PracticeProgress(answeredIDs: ["q1"], wrong: ["q1": record])
+            return true
+        }
         try await store.clear()
         let loaded = await store.load()
         XCTAssertNil(loaded)
@@ -111,7 +142,10 @@ final class PracticeProgressStoreTests: XCTestCase {
             summary: "下列说法与原文相符的是"
         )
         let progress = ["言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1"], wrong: ["q1": record])]
-        try await store.save(progress)
+        try await store.update { registry in
+            registry = progress
+            return true
+        }
 
         let loaded = await store.load()
         XCTAssertEqual(loaded, progress)

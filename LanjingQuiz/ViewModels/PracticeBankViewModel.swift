@@ -360,40 +360,47 @@ final class PracticeBankViewModel {
     /// - `correct == nil`(无答案题):只登记已答,永不写错题。
     /// - 多选未提交根本不进漏斗(`confirmSelection` 自带守卫)。
     ///
-    /// 返回是否产生了新写入;`answeredChanged || wrongChanged` 时落盘一次快照。
+    /// 返回是否产生了新写入。变更闭包先在本地快照上应用一次(列表计数立即
+    /// 生效),再交给存档在磁盘最新状态上原子重放——**不写整表快照**:练习
+    /// 手里的错题是旧的,整表落盘会把错题本刚删的记录整批复活。
     @discardableResult
     private func recordAnswered(_ question: BankQuestion, correct: Bool?, selected: Set<String>) -> Bool {
         let key = "\(question.category)/\(question.subCategory)"
-        var entry = progress[key] ?? PracticeProgress()
-        var answeredChanged = false
-        if !entry.answeredIDs.contains(question.id) {
-            entry.answeredIDs.append(question.id)
-            answeredChanged = true
+        let summary = HTMLText.summary(from: question.question)
+        let at = Date()
+        let mutate: @Sendable (inout [String: PracticeProgress]) -> Bool = { registry in
+            var entry = registry[key] ?? PracticeProgress()
+            var answeredChanged = false
+            if !entry.answeredIDs.contains(question.id) {
+                entry.answeredIDs.append(question.id)
+                answeredChanged = true
+            }
+            var wrongChanged = false
+            if correct == false {
+                // 错题 upsert(latest-wins):同题再错覆盖所选、累计次数、刷新时间。
+                var wrong = entry.wrong ?? [:]
+                let previous = wrong[question.id]
+                wrong[question.id] = WrongRecord(
+                    selected: selected.sorted(),
+                    wrongCount: (previous?.wrongCount ?? 0) + 1,
+                    lastWrongAt: at,
+                    summary: summary,
+                    isFavorite: previous?.isFavorite ?? false
+                )
+                entry.wrong = wrong
+                wrongChanged = true
+            } else if correct == true, entry.wrong?[question.id] != nil {
+                // 再答对 → 移出错题本(拍板决定:同一写入方闭环,零竞态)。
+                entry.wrong?.removeValue(forKey: question.id)
+                wrongChanged = true
+            }
+            guard answeredChanged || wrongChanged else { return false }
+            registry[key] = entry
+            return true
         }
-        var wrongChanged = false
-        if correct == false {
-            // 错题 upsert(latest-wins):同题再错覆盖所选、累计次数、刷新时间。
-            var wrong = entry.wrong ?? [:]
-            let previous = wrong[question.id]
-            wrong[question.id] = WrongRecord(
-                selected: selected.sorted(),
-                wrongCount: (previous?.wrongCount ?? 0) + 1,
-                lastWrongAt: Date(),
-                summary: HTMLText.summary(from: question.question),
-                isFavorite: previous?.isFavorite ?? false
-            )
-            entry.wrong = wrong
-            wrongChanged = true
-        } else if correct == true, entry.wrong?[question.id] != nil {
-            // 再答对 → 移出错题本(拍板决定:同一写入方闭环,零竞态)。
-            entry.wrong?.removeValue(forKey: question.id)
-            wrongChanged = true
-        }
-        guard answeredChanged || wrongChanged else { return false }
-        progress[key] = entry
-        let snapshot = progress
+        guard mutate(&progress) else { return false }
         let store = progressStore
-        Task { try? await store.save(snapshot) }
+        Task { try? await store.update(mutate) }
         return true
     }
 

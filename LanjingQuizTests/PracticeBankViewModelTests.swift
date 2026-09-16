@@ -36,14 +36,26 @@ actor FakePracticeSessionStore: PracticeSessionStoring {
 /// In-memory progress store: records saves/clears, never touches the file system.
 actor FakePracticeProgressStore: PracticeProgressStoring {
     private(set) var stored: [String: PracticeProgress]?
+    /// 变更落盘次数(无变更的 update 不计,与真实现一致)。
     private(set) var saveCount = 0
     private(set) var clearCount = 0
 
     func load() async -> [String: PracticeProgress]? { stored }
+
+    /// 测试预置整表——不在协议里:生产写入只有 update 的变更路径
+    /// (整表快照覆盖正是被修掉的复活 bug)。
     func save(_ progress: [String: PracticeProgress]) async throws {
         stored = progress
         saveCount += 1
     }
+
+    func update(_ mutate: @Sendable (inout [String: PracticeProgress]) -> Bool) async throws {
+        var registry = stored ?? [:]
+        guard mutate(&registry) else { return }
+        stored = registry
+        saveCount += 1
+    }
+
     func clear() async throws {
         stored = nil
         clearCount += 1
@@ -903,6 +915,62 @@ final class PracticeBankViewModelTests: XCTestCase {
         await waitForProgressSaves(progressStore, atLeast: baseline + 1)
         let saved = await progressStore.stored
         XCTAssertNil(saved?["言语理解/成语辨析"]?.wrong?["q3"], "多选提交答对同样移出")
+    }
+
+    // MARK: - 跨实例写回(错题本删除必须扛得住练习侧的陈旧快照)
+
+    /// 回归(用户报告):两个题型各有错题,错题本把错题全删掉后,练习再答错
+    /// 一题,之前删掉的错题整批复活——练习 VM 手里的进度快照是旧的,整表
+    /// 落盘把错题本刚删的记录写了回去。写入必须是「变更」,不能是整表快照。
+    func testWrongAnswerAfterWrongBookClearedDoesNotResurrectDeletedRecords() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = twoSubcategoryTexts()
+        let sessionStore = FakePracticeSessionStore()
+        let progressStore = FakePracticeProgressStore()
+        // 两个 VM 共享同一进度存档 = 生产里 AppState.practiceProgressStore 的同一文件。
+        let appState = AppState(bankStorage: storage,
+                                practiceSessionStore: sessionStore,
+                                practiceProgressStore: progressStore,
+                                bankDatabase: try! BankDatabase(inMemory: true))
+        let database = makeDatabase(categoryTexts: storage.categoryTexts)
+        let practiceVM = PracticeBankViewModel(appState: appState, storage: storage,
+                                               sessionStore: sessionStore, progressStore: progressStore,
+                                               database: database)
+
+        // 两个题型各答错一题(q1 / q4),练习侧快照与存档里都有两条错题。
+        await practiceVM.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        practiceVM.tapOption("A") // q1 答错
+        await practiceVM.resumeOrStart(category: "言语理解", subCategory: "其他")
+        practiceVM.tapOption("B") // q4 答错(答案是 A)
+        await progressStore.awaitSaveCount(2)
+
+        // 错题本把两条错题都删掉。
+        let wrongBookVM = WrongBookViewModel(appState: appState, progressStore: progressStore, database: database)
+        await wrongBookVM.load()
+        XCTAssertEqual(wrongBookVM.groups.flatMap(\.items).map(\.id).sorted(), ["q1", "q4"],
+                       "错题本应先看到两条错题")
+        await wrongBookVM.delete(id: "q1")
+        await wrongBookVM.delete(id: "q4")
+        let afterDelete = await progressStore.load()
+        XCTAssertNil(afterDelete?["言语理解/成语辨析"]?.wrong?["q1"])
+        XCTAssertNil(afterDelete?["言语理解/其他"]?.wrong?["q4"])
+
+        // 回练习:成语辨析推进到 q3(多选)提交一个错选(q2 无答案题顺带登记已答)。
+        await practiceVM.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        practiceVM.nextQuestion() // → q2
+        practiceVM.tapOption("A") // 无答案题:揭晓并登记已答
+        practiceVM.nextQuestion() // → q3
+        practiceVM.tapOption("B")
+        practiceVM.confirmSelection() // 答错 → 落盘
+        // 落盘 = 两次错答 + 两次删除 + q2 已答 + q3 错答。
+        await progressStore.awaitSaveCount(6)
+
+        // 只允许新增 q3;被错题本删掉的 q1 / q4 不得被练习的陈旧快照写回。
+        let saved = await progressStore.load()
+        XCTAssertEqual(saved?["言语理解/成语辨析"]?.wrong?.keys.sorted(), ["q3"],
+                       "练习的陈旧快照把错题本已删的 q1 写回了")
+        XCTAssertNil(saved?["言语理解/其他"]?.wrong?["q4"],
+                     "练习的陈旧快照把错题本已删的 q4 写回了")
     }
 
     // MARK: - force 刷新(§4.3:先让 force 路径离线可跑)
