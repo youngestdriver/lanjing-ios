@@ -26,6 +26,9 @@ final class PracticeBankViewModel {
     private let database: BankDatabase?
     /// 进度注册表内存副本(键 "\(category)/\(subCategory)")。
     private var progress: [String: PracticeProgress] = [:]
+    /// 在途练习注册表内存副本(键 "\(category)/\(subCategory)")。每个题型细分
+    /// 各存一份:切到别的题型作答不会把本题型已保存的练习覆盖掉。
+    private var sessions: [String: PracticeSession] = [:]
 
     /// The underlying store, exposed for the 我的 > 题库 > 日志导出 row.
     var bankStore: BankStorage { storage }
@@ -59,10 +62,9 @@ final class PracticeBankViewModel {
     // MARK: - Bank availability
 
     /// Reset after the local bank was deleted elsewhere (我的 > 删除题库):
-    /// the next ensureBankReady re-crawls everything from scratch. The
-    /// persisted practice session is cleared too (AppState.deleteBank also
-    /// clears it — double insurance for the settings screen's own VM).
-    /// 进度注册表同样清零:旧题 ID 无意义。
+    /// the next ensureBankReady re-crawls everything from scratch. 会话注册表
+    /// 与进度注册表都清零:旧题 ID 无意义。(AppState.deleteBank 也清档——
+    /// 对设置页自己的 VM 是双保险。)
     func bankWasDeleted() {
         phase = .idle
         meta = nil
@@ -71,6 +73,7 @@ final class PracticeBankViewModel {
         isLoadingSubcategories = false
         session = nil
         resumedFromDisk = false
+        sessions = [:]
         Task { try? await sessionStore.clear() }
         progress = [:]
         Task { try? await progressStore.clear() }
@@ -106,6 +109,12 @@ final class PracticeBankViewModel {
         if let loaded = await progressStore.load() { progress = loaded }
     }
 
+    /// 加载在途练习注册表(幂等,空表重载)。进入答题页时触发。
+    private func loadSessionsIfNeeded() async {
+        guard sessions.isEmpty else { return }
+        if let loaded = await sessionStore.load() { sessions = loaded }
+    }
+
     /// 我的 > 更新题库: re-crawl EVERY paper and atomically replace the local
     /// bank (refresh mode — the old bank stays intact on failure).
     func updateBank() async {
@@ -130,6 +139,7 @@ final class PracticeBankViewModel {
                 // 题库内容可能已变化:按恢复规则(问题 ID 集合比对)旧存档
                 // 不可能再匹配,清掉避免残留;失败(refresh 模式)不清,
                 // 旧库保留,存档依然有效。进度注册表同样清空(旧 ID 无意义)。
+                sessions = [:]
                 Task { try? await sessionStore.clear() }
                 progress = [:]
                 Task { try? await progressStore.clear() }
@@ -192,10 +202,12 @@ final class PracticeBankViewModel {
 
     /// Local-only session start (no network): parse the category file, filter
     /// by 题型细分, optionally shuffle (comb stems stay grouped — see
-    /// BankLogic.shuffledKeepingGroups). A persisted run resumes — and is NOT
-    /// reshuffled (the archive already contains the shuffled order) — when
-    /// BankLogic.resumeCandidate matches; otherwise a fresh session is created
-    /// and persisted once. Returns whether a saved run was resumed.
+    /// BankLogic.shuffledKeepingGroups). This 题型细分's persisted run resumes
+    /// — and is NOT reshuffled (the archive already contains the shuffled
+    /// order) — when BankLogic.resumeCandidate matches; otherwise a fresh
+    /// session is created and persisted once. Archives are per-题型细分, so
+    /// leaving for another 题型 and coming back resumes this run instead of
+    /// losing it. Returns whether a saved run was resumed.
     @discardableResult
     func resumeOrStart(category: String, subCategory: String) async -> Bool {
         if let database, let questions = try? await MainActor.run(body: { try database.questions(category: category, subCategory: subCategory) }) {
@@ -206,10 +218,11 @@ final class PracticeBankViewModel {
                 return false
             }
             await loadProgressIfNeeded()
+            await loadSessionsIfNeeded()
             let ordered = shuffleEnabled(category: category)
                 ? BankLogic.shuffledKeepingGroups(questions, seed: UInt64.random(in: .min ... .max))
                 : questions
-            let saved = await sessionStore.load()
+            let saved = sessions[PracticeSession.key(category: category, subCategory: subCategory)]
             if let resume = BankLogic.resumeCandidate(saved: saved, category: category, subCategory: subCategory, ordered: ordered) {
                 session = resume; resumedFromDisk = true; return true
             }
@@ -239,14 +252,18 @@ final class PracticeBankViewModel {
         "practice.shuffle.\(category)"
     }
 
-    /// Explicit exit (summary screen's 返回题型列表): drops the in-memory
-    /// session and the persisted file — a finished run must never resume.
+    /// Explicit exit (summary screen's 返回题型列表): drops this run's
+    /// in-memory session and its archive entry — a finished run must never
+    /// resume; other 题型细分's in-flight runs stay archived.
     /// (Plain system-back / swipe-back no longer clears anything: the ID-set
     /// resumeCandidate check is what prevents stale sessions from leaking.)
     func endSession() {
+        if let session {
+            sessions.removeValue(forKey: session.key)
+            persistSessions()
+        }
         session = nil
         resumedFromDisk = false
-        Task { try? await sessionStore.clear() }
     }
 
     /// Dismisses the "已恢复上次练习进度" banner. Not persisted — the flag is
@@ -257,13 +274,20 @@ final class PracticeBankViewModel {
 
     // MARK: - Persistence
 
-    /// Snapshot-and-save the current session. The snapshot is captured at
-    /// call time (value copy); the actor serializes writes so rapid mutations
-    /// land in order (last write wins); failures are silent — the next
-    /// mutation rewrites the file.
+    /// Snapshot-and-save the current session into the per-题型 registry.
+    /// The snapshot is captured at call time (value copy); the actor
+    /// serializes writes so rapid mutations land in order (last write wins);
+    /// failures are silent — the next mutation rewrites the file.
     private func persist() {
         guard let session else { return }
-        let snapshot = session
+        sessions[session.key] = session
+        persistSessions()
+    }
+
+    /// Snapshot-and-save the whole registry — 其他题型's in-flight runs are
+    /// carried along (and thus never dropped by this run's mutations).
+    private func persistSessions() {
+        let snapshot = sessions
         let store = sessionStore
         Task { try? await store.save(snapshot) }
     }
@@ -391,9 +415,11 @@ final class PracticeBankViewModel {
         session.index += 1
         self.session = session
         if session.isFinished {
-            // Run complete: clear the persisted file (a finished run must
-            // not resume), but keep the in-memory session for the summary.
-            Task { try? await sessionStore.clear() }
+            // Run complete: drop this 题型细分's archive entry (a finished run
+            // must not resume), but keep the in-memory session for the
+            // summary. Other 题型细分's in-flight runs stay archived.
+            sessions.removeValue(forKey: session.key)
+            persistSessions()
         } else {
             persist()
         }

@@ -299,6 +299,56 @@ final class PracticeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["练习完成"].waitForExistence(timeout: 10), "summary card never appeared")
     }
 
+    /// 回归(用户报告):题型 A 作答中途退出、切到题型 B 作答,再回 A —— A 的
+    /// 存档必须还在(恢复在第 2 题、弹恢复横幅),而不是从第 1 题空白重开、
+    /// 只剩题型首页那个对不上的 "1/3" 计数。
+    func testSwitchingSubcategoryKeepsSavedRuns() throws {
+        continueAfterFailure = false
+
+        let server = MockUpstreamServer()
+        try server.start()
+        defer { server.stop() }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["LANJING_BASE_URL"] = "http://127.0.0.1:\(server.port)"
+        app.launchArguments = ["-reset-bank"]
+        app.launch()
+        logInIfNeeded(app)
+
+        // 题型 A(成语辨析):答第 1 题,推进到第 2 题。
+        enterSubcategory("成语辨析", app: app)
+        let header1 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(header1.waitForExistence(timeout: 10), "quiz screen is blank — no question header")
+        answerCurrentQuestion(app, letter: "A", advance: "下一题")
+        let header2 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 2/'")).firstMatch
+        XCTAssertTrue(header2.waitForExistence(timeout: 5), "did not advance to question 2")
+
+        // 退出到题型列表:成语辨析行显示 1/3(需求 4),切到题型 B(虚词辨析)。
+        let quizBarA = app.navigationBars["成语辨析"]
+        XCTAssertTrue(quizBarA.waitForExistence(timeout: 5), "成语辨析 quiz nav bar missing")
+        tapBackButton(in: quizBarA)
+        XCTAssertTrue(waitForDisappearance(quizBarA, timeout: 5), "quiz did not pop back to the subcategory list")
+        XCTAssertTrue(app.staticTexts["1/3"].waitForExistence(timeout: 10), "subcategory row did not show 1/3 progress")
+        enterRow("虚词辨析", app: app)
+
+        // 题型 B 作答一题。
+        let bHeader1 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 1/'")).firstMatch
+        XCTAssertTrue(bHeader1.waitForExistence(timeout: 10), "虚词辨析 quiz screen is blank")
+        answerCurrentQuestion(app, letter: "A", advance: "下一题")
+
+        // 回题型 A:必须恢复在第 2 题(第 1 题的作答还在),并弹恢复横幅——
+        // 与列表行上的 1/3 一致,而不是空白重开的第 1 题。
+        let quizBarB = app.navigationBars["虚词辨析"]
+        XCTAssertTrue(quizBarB.waitForExistence(timeout: 5), "虚词辨析 quiz nav bar missing")
+        tapBackButton(in: quizBarB)
+        XCTAssertTrue(waitForDisappearance(quizBarB, timeout: 5), "quiz did not pop back to the subcategory list")
+        enterRow("成语辨析", app: app)
+        let resumedHeader = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '第 2/'")).firstMatch
+        XCTAssertTrue(resumedHeader.waitForExistence(timeout: 10),
+                      "切到另一题型后回到原题型没有恢复存档(从第 1 题重开了)")
+        XCTAssertTrue(app.staticTexts["已恢复上次练习进度"].waitForExistence(timeout: 5), "resume banner missing")
+    }
+
     /// 需求 2:练习页像考试一样左右滑动切换题目,滑动位置(索引)已持久化。
     func testPracticeSwipeNavigatesQuestions() throws {
         continueAfterFailure = false
@@ -435,6 +485,12 @@ final class PracticeFlowUITests: XCTestCase {
         waitForHittable(categoryRow)
         categoryRow.tap()
 
+        enterRow(name, app: app)
+    }
+
+    /// 在题型列表(已在当前页)里点开一个题型细分行——不经过 tab/大类,
+    /// 用于题型间切换的场景。
+    private func enterRow(_ name: String, app: XCUIApplication) {
         let subRow = app.staticTexts[name]
         XCTAssertTrue(subRow.waitForExistence(timeout: 10), "subcategory list is blank — no rows appeared")
         waitForHittable(subRow)

@@ -7,13 +7,14 @@ final class PracticeSessionTests: XCTestCase {
 
     private func makeQuestion(
         _ id: String,
-        answer: BankQuestion.Answer? = BankQuestion.Answer(letters: ["A"])
+        answer: BankQuestion.Answer? = BankQuestion.Answer(letters: ["A"]),
+        subCategory: String = "成语辨析"
     ) -> BankQuestion {
         BankQuestion(
             id: id,
             category: "言语理解",
             section: "逻辑填空",
-            subCategory: "成语辨析",
+            subCategory: subCategory,
             question: "<p>题干 \(id)</p>",
             stem: nil,
             options: ["<p>A</p>", "<p>B</p>", "<p>C</p>", "<p>D</p>"],
@@ -114,14 +115,36 @@ final class PracticeSessionTests: XCTestCase {
     func testStoreSaveLoadRoundTrip() async throws {
         let store = store()
         let session = makeSession()
-        try await store.save(session)
+        try await store.save([session.key: session])
         let loaded = await store.load()
-        XCTAssertEqual(loaded, session)
+        XCTAssertEqual(loaded, [session.key: session])
+    }
+
+    /// 一个题型细分一份存档:整表往返不丢任何题型的在途练习。
+    func testStoreRoundTripsMultipleSubcategorySessions() async throws {
+        let store = store()
+        let a = makeSession()
+        var b = PracticeSession(category: "言语理解", subCategory: "其他",
+                                questions: [makeQuestion("q4", subCategory: "其他")])
+        b.index = 0
+        try await store.save([a.key: a, b.key: b])
+        let loaded = await store.load()
+        XCTAssertEqual(loaded, [a.key: a, b.key: b])
+    }
+
+    /// 旧档兼容:单会话时代的文件是一个裸 PracticeSession,load 时包成注册表
+    /// ——升级不丢在途练习(下一次落盘按新格式重写)。
+    func testStoreLoadsLegacySingleSessionFileAsRegistry() async throws {
+        let session = makeSession()
+        try JSONEncoder().encode(session).write(to: dir.appending(path: "practice-session.json"))
+        let loaded = await store().load()
+        XCTAssertEqual(loaded, [session.key: session])
     }
 
     func testStoreClearRemovesFile() async throws {
         let store = store()
-        try await store.save(makeSession())
+        let session = makeSession()
+        try await store.save([session.key: session])
         let saved = await store.load()
         XCTAssertNotNil(saved)
         try await store.clear()

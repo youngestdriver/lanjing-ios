@@ -2,16 +2,16 @@ import XCTest
 import SwiftData
 @testable import LanjingQuiz
 
-/// In-memory practice-session store: records saves/clears, can be preloaded
-/// ("seeded") with a resume candidate, never touches the file system.
+/// In-memory practice-session registry store: records saves/clears, can be
+/// preloaded ("seeded") with a resume candidate, never touches the file system.
 actor FakePracticeSessionStore: PracticeSessionStoring {
-    private(set) var stored: PracticeSession?
+    private(set) var stored: [String: PracticeSession]?
     private(set) var saveCount = 0
     private(set) var clearCount = 0
 
-    func load() async -> PracticeSession? { stored }
-    func save(_ session: PracticeSession) async throws {
-        stored = session
+    func load() async -> [String: PracticeSession]? { stored }
+    func save(_ sessions: [String: PracticeSession]) async throws {
+        stored = sessions
         saveCount += 1
     }
     func clear() async throws {
@@ -95,14 +95,23 @@ final class FakePracticeCrawler: PracticeCrawling {
 @MainActor
 final class PracticeBankViewModelTests: XCTestCase {
 
+    /// 扫尾:随机开关用例把键写进了标准域(字面量钉死持久化键名),不能留在
+    /// 共享容器里——同进程后续用例(与手工启动的 App)读到它就会按随机顺序
+    /// 出题,依赖题库顺序的断言全乱。与 HomeTabTests 清标签栏设置同规。
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "practice.shuffle.言语理解")
+        super.tearDown()
+    }
+
     // MARK: - Fixtures
 
-    private func makeQuestion(_ id: String, answer: BankQuestion.Answer?) -> BankQuestion {
+    private func makeQuestion(_ id: String, answer: BankQuestion.Answer?,
+                              subCategory: String = "成语辨析") -> BankQuestion {
         BankQuestion(
             id: id,
             category: "言语理解",
             section: "逻辑填空",
-            subCategory: "成语辨析",
+            subCategory: subCategory,
             question: "<p>题干 \(id)</p>",
             stem: nil,
             options: ["<p>A</p>", "<p>B</p>", "<p>C</p>", "<p>D</p>"],
@@ -122,6 +131,21 @@ final class PracticeBankViewModelTests: XCTestCase {
             makeQuestion("q1", answer: BankQuestion.Answer(letters: ["B"])),
             makeQuestion("q2", answer: nil),
             makeQuestion("q3", answer: BankQuestion.Answer(letters: ["A", "C"])),
+        ]
+        let encoder = JSONEncoder()
+        let lines = questions.map { String(data: try! encoder.encode($0), encoding: .utf8)! }
+        return ["言语理解": lines.joined(separator: "\n") + "\n"]
+    }
+
+    /// 两个题型细分的题库:成语辨析(q1–q3)+ 其他(q4 单选答 A / q5 无答案)。
+    /// 「切到另一题型再回来不能丢原题型存档」的回归场景用。
+    private func twoSubcategoryTexts() -> [String: String] {
+        let questions = [
+            makeQuestion("q1", answer: BankQuestion.Answer(letters: ["B"])),
+            makeQuestion("q2", answer: nil),
+            makeQuestion("q3", answer: BankQuestion.Answer(letters: ["A", "C"])),
+            makeQuestion("q4", answer: BankQuestion.Answer(letters: ["A"]), subCategory: "其他"),
+            makeQuestion("q5", answer: nil, subCategory: "其他"),
         ]
         let encoder = JSONEncoder()
         let lines = questions.map { String(data: try! encoder.encode($0), encoding: .utf8)! }
@@ -170,10 +194,24 @@ final class PracticeBankViewModelTests: XCTestCase {
         }
     }
 
+    /// 等会话落盘最多 1000 次让步(有界版,红态不挂起)。
+    private func waitForSessionSaves(_ store: FakePracticeSessionStore, atLeast target: Int) async {
+        for _ in 0 ..< 1000 {
+            if await store.saveCount >= target { return }
+            await Task.yield()
+        }
+    }
+
     /// 读注册表里 成语辨析 条目的某题错题记录(未记录 = nil)。
     private func wrongRecord(_ store: FakePracticeProgressStore, id: String) async -> WrongRecord? {
         let stored = await store.stored
         return stored?["言语理解/成语辨析"]?.wrong?[id]
+    }
+
+    /// 读会话注册表里某题型的存档(未存档 = nil)。
+    private func storedSession(_ store: FakePracticeSessionStore,
+                               key: String = "言语理解/成语辨析") async -> PracticeSession? {
+        (await store.stored)?[key]
     }
 
     // MARK: - tapOption (问题 2 regression pins)
@@ -198,7 +236,7 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertEqual(session.answeredCount, 1)
         // The mutation was persisted (fresh-start save + tap save).
         await store.awaitSaveCount(2)
-        let stored = await store.stored
+        let stored = await storedSession(store)
         XCTAssertEqual(stored?.answers[0].selected, ["A"])
         XCTAssertEqual(stored?.index, 0)
     }
@@ -216,7 +254,7 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertEqual(session.rightCount, 1)
         XCTAssertEqual(session.wrongCount, 0)
         await store.awaitSaveCount(2)
-        let stored = await store.stored
+        let stored = await storedSession(store)
         XCTAssertEqual(stored?.answers[0].correct, true)
     }
 
@@ -311,10 +349,12 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertTrue(session.isFinished)
         XCTAssertEqual(session.rightCount, 1) // q3
         XCTAssertEqual(session.wrongCount, 1) // q1
-        // Finished run: file cleared, in-memory session kept for the summary.
-        await store.awaitClearCount(1)
-        let cleared = await store.stored
-        XCTAssertNil(cleared)
+        // Finished run: its archive entry is dropped (a finished run must not
+        // resume), in-memory session kept for the summary.
+        // 落盘 = fresh + tap + next + tap + next + tap + tap + confirm + finish。
+        await store.awaitSaveCount(9)
+        let archived = await storedSession(store)
+        XCTAssertNil(archived, "已完成的练习不得留在存档里")
     }
 
     func testJumpToMovesIndexAndRestoresState() async throws {
@@ -347,7 +387,7 @@ final class PracticeBankViewModelTests: XCTestCase {
         // Persisted: fresh-start save + tap + next + jump + jump = 5.
         await store.awaitSaveCount(5)
         let saveCount = await store.saveCount
-        let stored = await store.stored
+        let stored = await storedSession(store)
         XCTAssertEqual(saveCount, 5)
         XCTAssertEqual(stored?.index, 2)
     }
@@ -362,7 +402,7 @@ final class PracticeBankViewModelTests: XCTestCase {
         var saved = PracticeSession(category: "言语理解", subCategory: "成语辨析", questions: orderedQuestions)
         saved.answers[0] = PracticeSession.PracticeAnswer(selected: ["A"], revealed: true, correct: false)
         saved.index = 1
-        try await store.save(saved)
+        try await store.save([saved.key: saved])
 
         let vm = makeVM(storage: storage, sessionStore: store)
         let resumed = await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
@@ -387,7 +427,7 @@ final class PracticeBankViewModelTests: XCTestCase {
                                     questions: [original[1], original[0], original[2]])
         saved.answers[0] = PracticeSession.PracticeAnswer(selected: ["B"], revealed: true, correct: false)
         saved.index = 1
-        try await store.save(saved)
+        try await store.save([saved.key: saved])
 
         let vm = makeVM(storage: storage, sessionStore: store)
         let resumed = await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
@@ -397,6 +437,80 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertEqual(vm.session?.answers[0].correct, false)
         let saveCount = await store.saveCount
         XCTAssertEqual(saveCount, 1) // 恢复不重复持久化
+    }
+
+    /// 回归:题型 A 作答中途切到题型 B 作答,再回 A —— A 的存档(逐题状态、
+    /// 当前题号)必须仍在,而不是从第 1 题空白重开;B 的作答同样保留。
+    /// 存档按题型细分各存一份,切换题型不再互相覆盖(只有进度计数
+    /// 留下、答题页空白正是本回归的场景)。随机开关两种状态都覆盖:随机只
+    /// 影响新会话的出题顺序,不改变「切走再回来必须恢复」。
+    func testSwitchingSubcategoryKeepsBothSavedRuns() async throws {
+        for shuffle in [false, true] {
+            let storage = FakeBankStorage()
+            storage.categoryTexts = twoSubcategoryTexts()
+            let store = FakePracticeSessionStore()
+            let vm = makeVM(storage: storage, sessionStore: store)
+            vm.setShuffleEnabled(shuffle, category: "言语理解")
+
+            // 题型 A(成语辨析):作答一题并推进到第 2 题。
+            await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+            vm.tapOption("A")
+            vm.nextQuestion()
+            let aAnswers = try XCTUnwrap(vm.session).answers
+
+            // 切到题型 B(其他)作答。
+            let startedB = await vm.resumeOrStart(category: "言语理解", subCategory: "其他")
+            XCTAssertFalse(startedB, "shuffle=\(shuffle)")
+            XCTAssertEqual(vm.session?.subCategory, "其他", "shuffle=\(shuffle)")
+            vm.tapOption("A")
+            let bAnswers = try XCTUnwrap(vm.session).answers
+
+            // 回题型 A:恢复原存档(逐题状态与切走前一致),不是重开。
+            let resumedA = await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+            XCTAssertTrue(resumedA, "shuffle=\(shuffle):切到另一题型后回到原题型,应恢复存档而不是重开")
+            XCTAssertEqual(vm.session?.index, 1, "shuffle=\(shuffle)")
+            XCTAssertEqual(vm.session?.answers, aAnswers, "shuffle=\(shuffle)")
+
+            // 再切回题型 B:它的存档同样保留(不是被 A 的恢复覆盖掉)。
+            let resumedB = await vm.resumeOrStart(category: "言语理解", subCategory: "其他")
+            XCTAssertTrue(resumedB, "shuffle=\(shuffle):另一题型的作答同样要被保留")
+            XCTAssertEqual(vm.session?.answers, bAnswers, "shuffle=\(shuffle)")
+        }
+    }
+
+    /// 走完题型 A 的全部题目(存档条目移除:完成的练习不再恢复)不得
+    /// 波及题型 B 的在途存档。
+    func testFinishingOneSubcategoryKeepsAnotherSubcategoryRun() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = twoSubcategoryTexts()
+        let store = FakePracticeSessionStore()
+        let vm = makeVM(storage: storage, sessionStore: store)
+
+        // 题型 B 先答到第 2 题,留存档。
+        await vm.resumeOrStart(category: "言语理解", subCategory: "其他")
+        vm.tapOption("A")
+        vm.nextQuestion()
+
+        // 题型 A 走完全程(q1 答对、q2 无答案、q3 多选提交)。
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("B")
+        vm.nextQuestion()
+        vm.tapOption("A")
+        vm.nextQuestion()
+        vm.tapOption("A")
+        vm.tapOption("C")
+        vm.confirmSelection()
+        vm.nextQuestion() // 完成
+        XCTAssertTrue(vm.session?.isFinished ?? false)
+
+        // 完成的 A 不再恢复;B 的存档必须还在。
+        let resumedA = await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        XCTAssertFalse(resumedA, "已完成的练习不得恢复")
+        XCTAssertEqual(vm.session?.index, 0)
+        let resumedB = await vm.resumeOrStart(category: "言语理解", subCategory: "其他")
+        XCTAssertTrue(resumedB, "完成一个题型不得清掉另一题型的在途存档")
+        XCTAssertEqual(vm.session?.index, 1)
+        XCTAssertEqual(vm.session?.answers[0].correct, true)
     }
 
     func testResumeOrStartMissingCategoryFails() async {
@@ -418,7 +532,7 @@ final class PracticeBankViewModelTests: XCTestCase {
         let store = FakePracticeSessionStore()
         var saved = PracticeSession(category: "言语理解", subCategory: "成语辨析", questions: orderedQuestions)
         saved.index = 2
-        try await store.save(saved)
+        try await store.save([saved.key: saved])
 
         let vm = makeVM(storage: storage, sessionStore: store)
         _ = await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
@@ -428,20 +542,28 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertFalse(vm.resumedFromDisk)
     }
 
-    func testEndSessionClearsPersistedRun() async throws {
+    func testEndSessionDropsOnlyItsOwnArchivedRun() async throws {
         let storage = FakeBankStorage()
-        storage.categoryTexts = categoryTexts()
+        storage.categoryTexts = twoSubcategoryTexts()
         let store = FakePracticeSessionStore()
         let vm = makeVM(storage: storage, sessionStore: store)
+
+        // 两个题型各有在途存档。
+        await vm.resumeOrStart(category: "言语理解", subCategory: "其他")
+        vm.tapOption("A")
         await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+        vm.tapOption("A")
         XCTAssertNotNil(vm.session)
 
         vm.endSession()
         XCTAssertNil(vm.session)
         XCTAssertFalse(vm.resumedFromDisk)
-        await store.awaitClearCount(1)
-        let cleared = await store.stored
-        XCTAssertNil(cleared)
+        // 落盘 = 其他(fresh + tap)+ 成语辨析(fresh + tap)+ endSession。
+        await store.awaitSaveCount(5)
+        let ended = await storedSession(store)
+        XCTAssertNil(ended, "显式退出的练习不得留在存档里")
+        let other = await storedSession(store, key: "言语理解/其他")
+        XCTAssertNotNil(other, "另一题型的在途存档不受影响")
     }
 
     func testBankDeletedClearsSessionAndSave() async throws {
@@ -871,6 +993,11 @@ final class PracticeBankViewModelTests: XCTestCase {
         // 复刻 PracticeBankView.swift:57 的 .onChange:存活实例作废旧快照。
         practiceVM.bankWasDeleted()
         XCTAssertEqual(practiceVM.answeredCount(category: "言语理解"), 0)
+        // 会话注册表同样作废(内存 + 盘):少了内存清空,resumeOrStart 会把
+        // 陈旧存档从内存里恢复出来,答题页又与新的进度计数对不上。
+        await practiceSessionStore.awaitClearCount(1)
+        let clearedSessions = await practiceSessionStore.stored
+        XCTAssertNil(clearedSessions)
 
         // 再答一题(q3 多选 A+C):落盘快照只含新题,q1 不会被陈旧内存写回。
         await practiceVM.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
@@ -883,5 +1010,13 @@ final class PracticeBankViewModelTests: XCTestCase {
         let saved = await practiceProgressStore.stored
         XCTAssertEqual(saved?["言语理解/成语辨析"]?.answeredIDs, ["q3"],
                        "陈旧快照不得把已清的 q1 写回")
+        // 会话快照同理(本用例会话落盘:首次 fresh + 首次 tap + 重进 fresh +
+        // jump + 两个 tap + confirm = 7 次):内容必须是新会话(第 1 题未答),
+        // 不是复活出来的旧存档。
+        await waitForSessionSaves(practiceSessionStore, atLeast: 7)
+        let savedSessions = await practiceSessionStore.stored
+        let savedSession = savedSessions?["言语理解/成语辨析"]
+        XCTAssertEqual(savedSession?.index, 2)
+        XCTAssertEqual(savedSession?.answers[0].revealed, false, "陈旧会话存档不得被写回")
     }
 }

@@ -60,9 +60,8 @@ final class AppStateTests: XCTestCase {
             lastWrongAt: Date(timeIntervalSince1970: 1_760_000_000),
             summary: "下列句子中加点成语使用不恰当的一项是"
         )
-        try await sessionStore.save(
-            PracticeSession(category: "言语理解", subCategory: "成语辨析", questions: [])
-        )
+        let session = PracticeSession(category: "言语理解", subCategory: "成语辨析", questions: [])
+        try await sessionStore.save([session.key: session])
         try await progressStore.save([
             "言语理解/成语辨析": PracticeProgress(answeredIDs: ["q1", "q2"], wrong: ["q1": record])
         ])
