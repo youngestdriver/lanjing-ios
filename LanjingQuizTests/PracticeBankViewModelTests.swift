@@ -170,8 +170,10 @@ final class PracticeBankViewModelTests: XCTestCase {
     }
 
     private func makeVM(storage: FakeBankStorage, sessionStore: FakePracticeSessionStore,
-                        progressStore: FakePracticeProgressStore = FakePracticeProgressStore()) -> PracticeBankViewModel {
-        PracticeBankViewModel(appState: AppState(bankDatabase: try! BankDatabase(inMemory: true)),
+                        progressStore: FakePracticeProgressStore = FakePracticeProgressStore(),
+                        soundPlayer: SoundPlayer = Fixtures.silentSoundPlayer()) -> PracticeBankViewModel {
+        PracticeBankViewModel(appState: AppState(bankDatabase: try! BankDatabase(inMemory: true),
+                                                 soundPlayer: soundPlayer),
                               storage: storage, sessionStore: sessionStore,
                               progressStore: progressStore,
                               database: makeDatabase(categoryTexts: storage.categoryTexts))
@@ -330,6 +332,75 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertEqual(session.answers[2].correct, false)
         XCTAssertEqual(session.wrongCount, 1)
     }
+
+    // MARK: - 答题音效
+
+    /// 单选判分播对应音效;已揭晓题的重复 tap 只刷新显示,不重播。
+    func testTapOptionPlaysGradingSoundOnce() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        var played: [QuizSound] = []
+        let sound = SoundPlayer(isEnabled: { true }, playSound: { played.append($0) })
+        let vm = makeVM(storage: storage, sessionStore: store, soundPlayer: sound)
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+
+        vm.tapOption("A") // q1's answer is B → wrong
+        XCTAssertEqual(played, [.wrong])
+
+        vm.tapOption("A") // 已揭晓:仅刷新显示,不再判分
+        XCTAssertEqual(played, [.wrong], "已揭晓题的重复 tap 不该重播音效")
+    }
+
+    /// 答对播 .correct。
+    func testTapOptionCorrectPlaysCorrectSound() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        var played: [QuizSound] = []
+        let sound = SoundPlayer(isEnabled: { true }, playSound: { played.append($0) })
+        let vm = makeVM(storage: storage, sessionStore: store, soundPlayer: sound)
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+
+        vm.tapOption("B") // q1's answer is B → correct
+        XCTAssertEqual(played, [.correct])
+    }
+
+    /// 无答案题揭晓时没有对错可言,不播音效。
+    func testUngradableQuestionPlaysNoSound() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        var played: [QuizSound] = []
+        let sound = SoundPlayer(isEnabled: { true }, playSound: { played.append($0) })
+        let vm = makeVM(storage: storage, sessionStore: store, soundPlayer: sound)
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+
+        vm.nextQuestion()
+        vm.tapOption("A") // q2 has no known answer → reveal, no verdict
+        XCTAssertTrue(played.isEmpty, "无答案题不该播判分音")
+    }
+
+    /// 多选:点选阶段不判分、不响;确认提交才响。
+    func testMultiConfirmPlaysGradingSound() async throws {
+        let storage = FakeBankStorage()
+        storage.categoryTexts = categoryTexts()
+        let store = FakePracticeSessionStore()
+        var played: [QuizSound] = []
+        let sound = SoundPlayer(isEnabled: { true }, playSound: { played.append($0) })
+        let vm = makeVM(storage: storage, sessionStore: store, soundPlayer: sound)
+        await vm.resumeOrStart(category: "言语理解", subCategory: "成语辨析")
+
+        vm.nextQuestion()
+        vm.nextQuestion() // → q3 (multi, A+C)
+        vm.tapOption("A")
+        vm.tapOption("C")
+        XCTAssertTrue(played.isEmpty, "多选点选阶段不判分,不该出声")
+
+        vm.confirmSelection()
+        XCTAssertEqual(played, [.correct])
+    }
+
 
     // MARK: - nextQuestion / jumpTo
 
@@ -931,7 +1002,8 @@ final class PracticeBankViewModelTests: XCTestCase {
         let appState = AppState(bankStorage: storage,
                                 practiceSessionStore: sessionStore,
                                 practiceProgressStore: progressStore,
-                                bankDatabase: try! BankDatabase(inMemory: true))
+                                bankDatabase: try! BankDatabase(inMemory: true),
+                                soundPlayer: Fixtures.silentSoundPlayer())
         let database = makeDatabase(categoryTexts: storage.categoryTexts)
         let practiceVM = PracticeBankViewModel(appState: appState, storage: storage,
                                                sessionStore: sessionStore, progressStore: progressStore,
@@ -987,7 +1059,8 @@ final class PracticeBankViewModelTests: XCTestCase {
         let appState = AppState(bankStorage: storage,
                                practiceSessionStore: FakePracticeSessionStore(),
                                practiceProgressStore: FakePracticeProgressStore(),
-                               bankDatabase: try! BankDatabase(inMemory: true))
+                               bankDatabase: try! BankDatabase(inMemory: true),
+                               soundPlayer: Fixtures.silentSoundPlayer())
         let sessionStore = FakePracticeSessionStore()
         let progressStore = FakePracticeProgressStore()
         let crawler = FakePracticeCrawler(categoryTexts: storage.categoryTexts)
@@ -1029,7 +1102,8 @@ final class PracticeBankViewModelTests: XCTestCase {
         let appState = AppState(bankStorage: storage,
                                practiceSessionStore: FakePracticeSessionStore(),
                                practiceProgressStore: FakePracticeProgressStore(),
-                               bankDatabase: try! BankDatabase(inMemory: true))
+                               bankDatabase: try! BankDatabase(inMemory: true),
+                               soundPlayer: Fixtures.silentSoundPlayer())
         let database = makeDatabase(categoryTexts: storage.categoryTexts)
 
         // 练习 tab 的存活实例:已答错 q1,内存快照与注册表里都留着 q1。

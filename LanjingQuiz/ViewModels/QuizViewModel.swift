@@ -302,6 +302,8 @@ final class QuizViewModel {
     /// Port of the SPA selectOpt: update state, stop timer, reveal explain banner,
     /// fire-and-forget the upstream report, auto-advance only on correct answers.
     private func submitAnswer(letters: [String], correct: Bool, question: Question) {
+        // 判分即响。这里是考试侧唯一判分漏斗:单选/多选确认/键盘回车都汇入。
+        appState.soundPlayer.playGrading(correct: correct)
         if let idx = states.firstIndex(where: { $0.questionsId == question.id }) {
             states[idx].state = correct ? .right : .error
         }
@@ -387,6 +389,8 @@ final class QuizViewModel {
                 if seconds == 0 {
                     self.timerMode = .expired
                     self.timerTask = nil
+                    // 倒计时归零提醒(归零不自动交卷,只变红 + 这一声)。
+                    self.appState.soundPlayer.play(.timeUp)
                     return
                 }
             }

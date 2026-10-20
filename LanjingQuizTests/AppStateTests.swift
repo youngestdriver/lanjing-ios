@@ -108,4 +108,26 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(defaults.stringArray(forKey: TabSettings.storageKey), ["exams", "profile"],
                        "用户改设置的正常路径被抑制开关带坏了(不再落盘)")
     }
+
+    /// 「答题音效」开关:AppState 持有(toggle 绑定),didSet 落盘标准域,
+    /// 默认开。跑完恢复标准域原值(照上方用例不污染宿主容器)。
+    func testSoundEnabledDefaultsOnAndPersistsThroughAppState() {
+        let defaults = UserDefaults.standard
+        let key = SoundSettings.enabledKey
+        let original = defaults.object(forKey: key)
+        defaults.removeObject(forKey: key)
+        defer {
+            if let original {
+                defaults.set(original, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
+        let appState = AppState(bankDatabase: try! BankDatabase(inMemory: true))
+        XCTAssertTrue(appState.soundEnabled, "音效默认应开启")
+
+        appState.soundEnabled = false
+        XCTAssertEqual(defaults.object(forKey: key) as? Bool, false, "关掉后应立刻落盘")
+    }
 }

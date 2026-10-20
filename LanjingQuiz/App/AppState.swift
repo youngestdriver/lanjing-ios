@@ -40,6 +40,14 @@ final class AppState {
             QuizSettings.saveAutoAdvanceOnCorrect(autoAdvanceOnCorrect)
         }
     }
+    /// 「答题音效」开关(我的 > 答题设置)。默认开;didSet 落盘,模式与
+    /// autoAdvanceOnCorrect 相同。SoundPlayer 在播放入口实时读同一键值,
+    /// 关掉立即生效。
+    var soundEnabled: Bool {
+        didSet {
+            SoundSettings.saveEnabled(soundEnabled)
+        }
+    }
     var notice: String?
 
     /// displayOrder 里第一个可见项(纯函数);空集合回退「我的」。
@@ -77,6 +85,12 @@ final class AppState {
     let api: APIClient
     let cookieCloudSync: CookieCloudSync
     let bankStorage: BankStorage
+    /// 答题音效出口(答对/答错/倒计时到点)。所有答题相关 VM 经它播放,不
+    /// 各自持有——测试注入静音/spy 实例后,判分路径在单测里不出声。
+    let soundPlayer: SoundPlayer
+    /// 自定义答题音效的槽位存储。「我的 > 答题设置」用它读取 / 删除 /
+    /// 写入；播放出口默认也指向同一目录。
+    let customSoundStore: any CustomSoundStoring
     /// Practice-run persistence (Application Support/LanjingQuiz/
     /// practice-session.json), injected like bankStorage so tests can fake it.
     let practiceSessionStore: any PracticeSessionStoring
@@ -92,10 +106,14 @@ final class AppState {
     init(api: APIClient = APIClient(), bankStorage: BankStorage = FileManagerBankStorage(),
          practiceSessionStore: any PracticeSessionStoring = FileManagerPracticeSessionStore(),
          practiceProgressStore: any PracticeProgressStoring = FileManagerPracticeProgressStore(),
-         bankDatabase: BankDatabase? = nil) {
+         bankDatabase: BankDatabase? = nil,
+         soundPlayer: SoundPlayer = .shared,
+         customSoundStore: any CustomSoundStoring = FileManagerCustomSoundStore()) {
         self.api = api
         self.cookieCloudSync = CookieCloudSync(cookieStore: api.cookieStore)
         self.bankStorage = bankStorage
+        self.soundPlayer = soundPlayer
+        self.customSoundStore = customSoundStore
         self.practiceSessionStore = practiceSessionStore
         self.practiceProgressStore = practiceProgressStore
         // nil → 创建真实磁盘库(生产默认)。测试必须显式传 inMemory 库:
@@ -110,6 +128,7 @@ final class AppState {
         self.homeTab = HomeTab.displayOrder.first { visible.contains($0) } ?? .profile
         self.theme = Theme.load()
         self.autoAdvanceOnCorrect = QuizSettings.loadAutoAdvanceOnCorrect()
+        self.soundEnabled = SoundSettings.loadEnabled()
     }
 
     /// 开屏 logo 页最短停留时长:即使判定瞬时完成(未配置 CookieCloud /

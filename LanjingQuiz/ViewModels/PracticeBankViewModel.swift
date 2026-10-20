@@ -328,6 +328,8 @@ final class PracticeBankViewModel {
             answer.correct = BankLogic.grade(selected: answer.selected, question: question)
             if !wasRevealed {
                 recordAnswered(question, correct: answer.correct, selected: answer.selected)
+                // 音效与登记同条件:已揭晓题的重复 tap 只刷新显示,不重播。
+                appState.soundPlayer.playGrading(correct: answer.correct)
             }
         }
         session.answers[index] = answer
@@ -344,6 +346,8 @@ final class PracticeBankViewModel {
         answer.correct = BankLogic.grade(selected: answer.selected, question: question)
         answer.revealed = true
         recordAnswered(question, correct: answer.correct, selected: answer.selected)
+        // 多选点选阶段不判分不响,确认提交才响(上方守卫保证单次)。
+        appState.soundPlayer.playGrading(correct: answer.correct)
         session.answers[index] = answer
         self.session = session
         persist()

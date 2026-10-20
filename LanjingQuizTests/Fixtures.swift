@@ -176,4 +176,12 @@ extension Fixtures {
     ) -> QuestionState {
         QuestionState(questionsId: questionsId, uuId: uuId, num: num, combId: combId, section: section, state: state, marked: false)
     }
+
+    /// 单测默认注入的静音音效出口:判分路径在测试运行里不该真的出声(与
+    /// 「fake 存储不碰真实沙盒」同一卫生标准)。断言音效用例自建带 spy 的
+    /// SoundPlayer,不用这个。
+    @MainActor
+    static func silentSoundPlayer() -> SoundPlayer {
+        SoundPlayer(isEnabled: { false }, playSound: { _ in })
+    }
 }
