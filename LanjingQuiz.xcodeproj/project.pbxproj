@@ -19,6 +19,7 @@
 		1E9207B9E37308356A32B207 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B6C0CB47C05234693836A37 /* RootView.swift */; };
 		20EE6B46B6AEE5FB6B7AFD66 /* AnswerDotGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A1BDA41976EE6D7B42DA31 /* AnswerDotGrid.swift */; };
 		23B57501204B215210E0976F /* PracticeBankViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33F905DFA804D34FFB20F66C /* PracticeBankViewModel.swift */; };
+		2786C7AC1B9DC55EA1B6FB9E /* CustomSoundStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F6E2FAF092D9B44745E0C4 /* CustomSoundStoreTests.swift */; };
 		28F300E7457F204507234476 /* BankImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8CB471E1C7567BE98C0E38 /* BankImporter.swift */; };
 		2BAB0D51CA3CD43C3E44B296 /* PracticeBankSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1968D8CED206F85E14A8B24B /* PracticeBankSettingsSection.swift */; };
 		2C0623D9E079B9790A11E8D0 /* SoundTrimRange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0280A97E4A979660D2E1F877 /* SoundTrimRange.swift */; };
@@ -65,6 +66,7 @@
 		8D73C07C7FE5DD33AF178668 /* BankImportUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581FB9228388ABEFA7056955 /* BankImportUITests.swift */; };
 		8E994024B48D95DEC0D64390 /* CookieCloudCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6913CBFD4AD1D569021F5032 /* CookieCloudCrypto.swift */; };
 		909D285B5411413527F97611 /* CookieCloudCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 076328ABD900D50196B69B82 /* CookieCloudCryptoTests.swift */; };
+		93C7B31E25371571E130AD43 /* CustomSoundStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083F9B75FF0DD7D4439A7C63 /* CustomSoundStore.swift */; };
 		9BDEBD4B0CC88D8F0AD6E86D /* PracticeSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E6F97D0273040C8E0A2C306 /* PracticeSessionStore.swift */; };
 		9F233F588C9ACD522BF61132 /* LoginFormTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E21335F7B31985CE3647EE6E /* LoginFormTests.swift */; };
 		A04EDE1E6E98453D9478097B /* AnswerCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DA9741048B817074E66C41 /* AnswerCardView.swift */; };
@@ -144,6 +146,7 @@
 		05796CE89C2C81EA0EC1B8D5 /* CookieCloudClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieCloudClient.swift; sourceTree = "<group>"; };
 		06DF772CC79D536723E0BB2B /* BatchFailureDiagnosisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchFailureDiagnosisTests.swift; sourceTree = "<group>"; };
 		076328ABD900D50196B69B82 /* CookieCloudCryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieCloudCryptoTests.swift; sourceTree = "<group>"; };
+		083F9B75FF0DD7D4439A7C63 /* CustomSoundStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomSoundStore.swift; sourceTree = "<group>"; };
 		0AAA5E44A18B77CCF3A658E9 /* TabSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSettingsTests.swift; sourceTree = "<group>"; };
 		1039294FEB0B4CE1352C3CAF /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
 		1133C5D8F1711CF399B2E524 /* PracticeAnswerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeAnswerCardView.swift; sourceTree = "<group>"; };
@@ -197,6 +200,7 @@
 		6665ACEC7ADB34A675333AB2 /* LanjingQuiz.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LanjingQuiz.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		67F512FD68645C1849B92BDF /* BankLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BankLogic.swift; sourceTree = "<group>"; };
 		6913CBFD4AD1D569021F5032 /* CookieCloudCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieCloudCrypto.swift; sourceTree = "<group>"; };
+		69F6E2FAF092D9B44745E0C4 /* CustomSoundStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomSoundStoreTests.swift; sourceTree = "<group>"; };
 		6AE3F3A3F273301A20F38D05 /* PracticeUpstreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeUpstreamClient.swift; sourceTree = "<group>"; };
 		6C1EFD7DA0B3B88E412BA6B6 /* NeedsLoginPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeedsLoginPlaceholder.swift; sourceTree = "<group>"; };
 		6C66501C84823829FBA3D384 /* CookieStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieStore.swift; sourceTree = "<group>"; };
@@ -301,6 +305,7 @@
 				5FF5AB4B1C7BCE1D1BA79FA0 /* BankStorageTests.swift */,
 				06DF772CC79D536723E0BB2B /* BatchFailureDiagnosisTests.swift */,
 				076328ABD900D50196B69B82 /* CookieCloudCryptoTests.swift */,
+				69F6E2FAF092D9B44745E0C4 /* CustomSoundStoreTests.swift */,
 				4DB3BE1419753CE217EF72BC /* ExamHTMLParserTests.swift */,
 				4A835D9E0864B2CF6D64282F /* ExamListViewModelTests.swift */,
 				1039294FEB0B4CE1352C3CAF /* Fixtures.swift */,
@@ -372,6 +377,7 @@
 				1D2AC2EB3F89887A59701DEA /* BankPackage.swift */,
 				B4ECDFAEED262D32F8A3FE69 /* BankStorage.swift */,
 				6913CBFD4AD1D569021F5032 /* CookieCloudCrypto.swift */,
+				083F9B75FF0DD7D4439A7C63 /* CustomSoundStore.swift */,
 				A102BB0CE3FB1B8F9CC75D34 /* DesignSystem.swift */,
 				537D051E4644236232756CB3 /* Extensions.swift */,
 				0364F22B8201AF3CC52F19FE /* Formatters.swift */,
@@ -647,6 +653,7 @@
 				8E994024B48D95DEC0D64390 /* CookieCloudCrypto.swift in Sources */,
 				E3C6091DAD81129D5F4A31F2 /* CookieCloudSync.swift in Sources */,
 				8A9AACD2DC27FA2774D2F4AF /* CookieStore.swift in Sources */,
+				93C7B31E25371571E130AD43 /* CustomSoundStore.swift in Sources */,
 				FF6C06120895D66E811BEA37 /* DesignSystem.swift in Sources */,
 				C9EF3541101112BD8F1872DF /* Exam.swift in Sources */,
 				5C0B73161F9E6DE9607C18CE /* ExamCardView.swift in Sources */,
@@ -733,6 +740,7 @@
 				74A6E99F1CAC6EC9B9D6FEA7 /* BankStorageTests.swift in Sources */,
 				B43A7FA144F4FD361C45A1F2 /* BatchFailureDiagnosisTests.swift in Sources */,
 				909D285B5411413527F97611 /* CookieCloudCryptoTests.swift in Sources */,
+				2786C7AC1B9DC55EA1B6FB9E /* CustomSoundStoreTests.swift in Sources */,
 				FF2796CA668A7D9771341E8A /* ExamHTMLParserTests.swift in Sources */,
 				C84ADDB82DFB284274FCFA5E /* ExamListViewModelTests.swift in Sources */,
 				EFDF1B195F2C7100DFFEA962 /* Fixtures.swift in Sources */,
