@@ -31,33 +31,52 @@ struct ActionButtonStyle: ButtonStyle {
 
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
+#if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            configuration.label
-                // 深色下就是白字;浅色下自动转深色——纯白压在浅色玻璃上
-                // 对比度不足,系统 glass 按钮同样用自适应标签色。
-                .foregroundStyle(.primary)
-                .font(.system(size: 15, weight: .bold))
-                .padding(.vertical, 14)
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity)
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: radius))
+            glassBody(configuration)
         } else {
-            // 3D keycap:硬 4pt 底影,按下沉进阴影里。
-            configuration.label
-                .foregroundStyle(.white)
-                .font(.system(size: 15, weight: .bold))
-                .padding(.vertical, 14)
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity)
-                .background(RoundedRectangle(cornerRadius: radius).fill(color))
-                .overlay(
-                    RoundedRectangle(cornerRadius: radius)
-                        .stroke(color.opacity(0.6), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.25), radius: 0, x: 0, y: configuration.isPressed ? 0 : 4)
-                .offset(y: configuration.isPressed ? 4 : 0)
-                .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            keycapBody(configuration)
         }
+#else
+        // Xcode 16 / Swift 6.1 的 SDK 没有 iOS 26 的 glassEffect;直接回退
+        // 键帽,保证旧工具链也能构建。
+        keycapBody(configuration)
+#endif
+    }
+
+#if compiler(>=6.2)
+    @available(iOS 26.0, *)
+    @ViewBuilder
+    private func glassBody(_ configuration: Configuration) -> some View {
+        configuration.label
+            // 深色下就是白字;浅色下自动转深色——纯白压在浅色玻璃上
+            // 对比度不足,系统 glass 按钮同样用自适应标签色。
+            .foregroundStyle(.primary)
+            .font(.system(size: 15, weight: .bold))
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: radius))
+    }
+#endif
+
+    @ViewBuilder
+    private func keycapBody(_ configuration: Configuration) -> some View {
+        // 3D keycap:硬 4pt 底影,按下沉进阴影里。
+        configuration.label
+            .foregroundStyle(.white)
+            .font(.system(size: 15, weight: .bold))
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: radius).fill(color))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius)
+                    .stroke(color.opacity(0.6), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.25), radius: 0, x: 0, y: configuration.isPressed ? 0 : 4)
+            .offset(y: configuration.isPressed ? 4 : 0)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
 

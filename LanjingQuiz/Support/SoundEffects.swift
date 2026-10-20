@@ -33,10 +33,10 @@ final class SoundPlayer {
     static let shared = SoundPlayer()
 
     private let isEnabled: @MainActor () -> Bool
-    private let playSound: @MainActor (QuizSound) -> Void
+    private let playSound: (@MainActor (QuizSound) -> Void)?
 
     init(isEnabled: @MainActor @escaping () -> Bool = { SoundSettings.loadEnabled() },
-         playSound: @MainActor @escaping (QuizSound) -> Void = SoundPlayer.playDefault) {
+         playSound: (@MainActor (QuizSound) -> Void)? = nil) {
         self.isEnabled = isEnabled
         self.playSound = playSound
     }
@@ -52,11 +52,10 @@ final class SoundPlayer {
     /// 立即生效。
     func play(_ sound: QuizSound) {
         guard isEnabled() else { return }
-        playSound(sound)
-    }
-
-    @MainActor
-    static func playDefault(_ sound: QuizSound) {
-        DefaultQuizSoundOutput.shared.play(sound)
+        if let playSound {
+            playSound(sound)
+        } else {
+            DefaultQuizSoundOutput.shared.play(sound)
+        }
     }
 }

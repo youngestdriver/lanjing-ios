@@ -115,13 +115,16 @@ final class AppState {
          practiceSessionStore: any PracticeSessionStoring = FileManagerPracticeSessionStore(),
          practiceProgressStore: any PracticeProgressStoring = FileManagerPracticeProgressStore(),
          bankDatabase: BankDatabase? = nil,
-         soundPlayer: SoundPlayer = .shared,
-         customSoundStore: any CustomSoundStoring = FileManagerCustomSoundStore()) {
+         soundPlayer: SoundPlayer? = nil,
+         customSoundStore: (any CustomSoundStoring)? = nil) {
         self.api = api
         self.cookieCloudSync = CookieCloudSync(cookieStore: api.cookieStore)
         self.bankStorage = bankStorage
-        self.soundPlayer = soundPlayer
-        self.customSoundStore = customSoundStore
+        // 默认参数保持 nil,在 @MainActor 的 init 体内再取生产默认:
+        // Swift 6.1(Xcode 16.4) 在 SILGen 里对这里的 actor 隔离默认参数
+        // 会崩溃,CI 的旧工具链必须绕开。
+        self.soundPlayer = soundPlayer ?? .shared
+        self.customSoundStore = customSoundStore ?? FileManagerCustomSoundStore()
         self.practiceSessionStore = practiceSessionStore
         self.practiceProgressStore = practiceProgressStore
         // nil → 创建真实磁盘库(生产默认)。测试必须显式传 inMemory 库:
