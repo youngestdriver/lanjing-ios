@@ -99,7 +99,7 @@ struct QuizView: View {
                 vm?.retry()
                 Task { await vm?.enterAndLoad() }
             }
-            .buttonStyle(KeycapButtonStyle(color: DS.accent))
+            .buttonStyle(ActionButtonStyle(color: DS.accent))
             .frame(width: 160)
             Button("返回") {
                 appState.route = .examList

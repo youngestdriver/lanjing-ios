@@ -34,7 +34,7 @@ struct ExamListView: View {
                     Button("重试") {
                         Task { await vm.load() }
                     }
-                    .buttonStyle(KeycapButtonStyle(color: DS.accent))
+                    .buttonStyle(ActionButtonStyle(color: DS.accent))
                     .frame(width: 160)
                 }
                 .padding()

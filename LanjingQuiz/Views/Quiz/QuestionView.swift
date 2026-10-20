@@ -82,7 +82,7 @@ struct QuestionView: View {
                     Button("提交") {
                         vm.confirmSelection()
                     }
-                    .buttonStyle(KeycapButtonStyle(color: DS.accent, radius: DS.radiusSM))
+                    .buttonStyle(ActionButtonStyle(color: DS.accent, radius: DS.radiusSM))
                 }
             }
             .padding(.horizontal)
@@ -143,7 +143,7 @@ struct QuestionView: View {
             Button("提交") {
                 vm.confirmSelection()
             }
-            .buttonStyle(KeycapButtonStyle(color: DS.accent, radius: DS.radiusSM))
+            .buttonStyle(ActionButtonStyle(color: DS.accent, radius: DS.radiusSM))
             .padding(.top, 4)
         }
     }

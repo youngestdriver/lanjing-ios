@@ -264,7 +264,7 @@ struct PracticeQuizView: View {
                             vm.nextQuestion()
                         }
                     }
-                    .buttonStyle(KeycapButtonStyle(color: DS.accent, radius: DS.radiusSM))
+                    .buttonStyle(ActionButtonStyle(color: DS.accent, radius: DS.radiusSM))
                     .frame(maxWidth: .infinity)
                 }
             }
@@ -323,7 +323,7 @@ struct PracticeQuizView: View {
             Button("提交") {
                 vm.confirmSelection()
             }
-            .buttonStyle(KeycapButtonStyle(color: DS.accent, radius: DS.radiusSM))
+            .buttonStyle(ActionButtonStyle(color: DS.accent, radius: DS.radiusSM))
             .padding(.top, 4)
         }
     }
@@ -346,7 +346,7 @@ struct PracticeQuizView: View {
                 vm.endSession()
                 dismiss()
             }
-            .buttonStyle(KeycapButtonStyle(color: DS.accent, radius: DS.radiusSM))
+            .buttonStyle(ActionButtonStyle(color: DS.accent, radius: DS.radiusSM))
             // 完成页入口(设计稿 §3.3):先收场——endSession 清掉已完成的存档、
             // dismiss 把练习页从导航栈里弹出(回到练习 tab 时停在题型列表,
             // 而不是一场已收掉的完成页),再走 AppState.select 收口切到错题本。
@@ -355,7 +355,7 @@ struct PracticeQuizView: View {
                 dismiss()
                 appState.select(.wrongBook)
             }
-            .buttonStyle(KeycapButtonStyle(color: DS.blue, radius: DS.radiusSM))
+            .buttonStyle(ActionButtonStyle(color: DS.blue, radius: DS.radiusSM))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

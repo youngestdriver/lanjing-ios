@@ -24,7 +24,7 @@ struct ResultView: View {
             Button("返回路线图") {
                 appState.route = .examList
             }
-            .buttonStyle(KeycapButtonStyle(color: DS.accent))
+            .buttonStyle(ActionButtonStyle(color: DS.accent))
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }

@@ -34,7 +34,7 @@ struct StatsBarView: View {
                 Button("交卷") {
                     showSubmitConfirm = true
                 }
-                .buttonStyle(KeycapButtonStyle(color: DS.red, radius: DS.radiusSM))
+                .buttonStyle(ActionButtonStyle(color: DS.red, radius: DS.radiusSM))
                 .frame(width: 92, height: 44)
             }
         }
