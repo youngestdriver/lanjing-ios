@@ -401,7 +401,6 @@ final class PracticeBankViewModelTests: XCTestCase {
         XCTAssertEqual(played, [.correct])
     }
 
-
     // MARK: - nextQuestion / jumpTo
 
     func testNextQuestionKeepsAnswersAndClearsOnFinish() async throws {

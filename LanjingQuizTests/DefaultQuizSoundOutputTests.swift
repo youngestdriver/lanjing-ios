@@ -103,6 +103,11 @@ final class DefaultQuizSoundOutputTests: XCTestCase {
         XCTAssertTrue(systems.isEmpty)
     }
 
+    func testStopStopsFilePlayer() {
+        output().stop()
+        XCTAssertEqual(player.calls, ["stop"])
+    }
+
     /// 端到端数据路径：真实文件槽位安装后，output 必须直接播它而不是系统音。
     func testInstalledSlotFileIsPlayedByOutput() throws {
         let dir = FileManager.default.temporaryDirectory

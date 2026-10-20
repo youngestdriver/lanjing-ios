@@ -91,6 +91,14 @@ final class AppState {
     /// 自定义答题音效的槽位存储。「我的 > 答题设置」用它读取 / 删除 /
     /// 写入；播放出口默认也指向同一目录。
     let customSoundStore: any CustomSoundStoring
+    /// 自定义音效文件变化时递增：设置页状态行读取它，确保从详情页 pop
+    /// 回来时一定刷新，不依赖 NavigationStack 重发 onAppear。
+    private(set) var customSoundRevision = 0
+
+    func notifyCustomSoundChanged() {
+        customSoundRevision += 1
+    }
+
     /// Practice-run persistence (Application Support/LanjingQuiz/
     /// practice-session.json), injected like bankStorage so tests can fake it.
     let practiceSessionStore: any PracticeSessionStoring

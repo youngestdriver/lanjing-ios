@@ -97,6 +97,7 @@ struct CustomSoundView: View {
                 assetDuration: pending.duration,
                 store: appState.customSoundStore
             ) {
+                appState.notifyCustomSoundChanged()
                 refresh()
             }
             .onDisappear {
@@ -115,6 +116,7 @@ struct CustomSoundView: View {
             Text("该事件将恢复播放系统提示音。")
         }
         .onAppear { refresh() }
+        .onDisappear { previewOutput?.stop() }
     }
 
     private var statusText: String {
@@ -138,6 +140,7 @@ struct CustomSoundView: View {
     private func resetToDefault() {
         do {
             try appState.customSoundStore.remove(for: slot)
+            appState.notifyCustomSoundChanged()
             refresh()
         } catch {
             errorMessage = "恢复失败：\(error.localizedDescription)"
@@ -179,26 +182,25 @@ struct SoundStatusRow: View {
     let slot: SoundSlot
 
     @Environment(AppState.self) private var appState
-    @State private var duration: TimeInterval?
 
     var body: some View {
+        // 读取 revision 建立 Observation 依赖：安装或恢复后即使 pop 不重发
+        // onAppear，行也会重新渲染。
+        let _ = appState.customSoundRevision
         HStack {
             Text(title)
             Spacer()
-            Text(duration.map { String(format: "自定义 · %.1f 秒", $0) } ?? "系统默认")
+            Text(statusText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
-        .accessibilityIdentifier("\(slot.rawValue)-sound-row")
-        .onAppear { refresh() }
     }
 
-    private func refresh() {
+    private var statusText: String {
         guard let url = appState.customSoundStore.url(for: slot),
               let player = try? AVAudioPlayer(contentsOf: url) else {
-            duration = nil
-            return
+            return "系统默认"
         }
-        duration = player.duration
+        return String(format: "自定义 · %.1f 秒", player.duration)
     }
 }

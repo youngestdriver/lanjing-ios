@@ -39,4 +39,19 @@ final class SoundTrimRangeTests: XCTestCase {
         let range = SoundTrimRange(start: 0, end: 5)
         XCTAssertEqual(range.movingStart(to: 100, assetDuration: 10), SoundTrimRange(start: 4.5, end: 5))
     }
+
+    func testInitialRangeAtExactlyFiveSeconds() {
+        XCTAssertEqual(SoundTrimRange.initial(for: 5), SoundTrimRange(start: 0, end: 5))
+    }
+
+    func testMovingStartRespectsMaxClipFromTheLowerSide() {
+        let range = SoundTrimRange(start: 5, end: 10)
+        XCTAssertEqual(range.movingStart(to: 0, assetDuration: 10), range)
+    }
+
+    func testMovingEndClampsToAssetDuration() {
+        let range = SoundTrimRange(start: 2, end: 4)
+        XCTAssertEqual(range.movingEnd(to: 9, assetDuration: 5.5),
+                       SoundTrimRange(start: 2, end: 5.5))
+    }
 }

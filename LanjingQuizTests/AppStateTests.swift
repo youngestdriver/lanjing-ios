@@ -130,4 +130,11 @@ final class AppStateTests: XCTestCase {
         appState.soundEnabled = false
         XCTAssertEqual(defaults.object(forKey: key) as? Bool, false, "关掉后应立刻落盘")
     }
+
+    func testNotifyCustomSoundChangedBumpsRevision() {
+        let appState = AppState(bankDatabase: try! BankDatabase(inMemory: true))
+        XCTAssertEqual(appState.customSoundRevision, 0)
+        appState.notifyCustomSoundChanged()
+        XCTAssertEqual(appState.customSoundRevision, 1)
+    }
 }

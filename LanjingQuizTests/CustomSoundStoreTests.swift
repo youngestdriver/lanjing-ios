@@ -65,6 +65,17 @@ final class CustomSoundStoreTests: XCTestCase {
         XCTAssertNotNil(nestedStore.url(for: .correct))
     }
 
+    func testFailedInstallLeavesExistingFileIntact() throws {
+        let source = try makeFile("source.m4a", contents: Data([1, 2, 3]))
+        try store().install(from: source, for: .correct)
+
+        let missing = dir.appending(path: "missing.m4a")
+        XCTAssertThrowsError(try store().install(from: missing, for: .correct))
+
+        let installed = try XCTUnwrap(store().url(for: .correct))
+        XCTAssertEqual(try Data(contentsOf: installed), Data([1, 2, 3]))
+    }
+
     func testRemoveDeletesFileAndIsIdempotent() throws {
         let source = try makeFile("source.m4a")
         try store().install(from: source, for: .correct)

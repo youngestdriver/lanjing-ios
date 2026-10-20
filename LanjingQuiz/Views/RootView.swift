@@ -167,11 +167,13 @@ private struct ProfileView: View {
                     } label: {
                         SoundStatusRow(title: "答对音效", slot: .correct)
                     }
+                    .accessibilityIdentifier("correct-sound-row")
                     NavigationLink {
                         CustomSoundView(slot: .wrong)
                     } label: {
                         SoundStatusRow(title: "答错音效", slot: .wrong)
                     }
+                    .accessibilityIdentifier("wrong-sound-row")
                 }
 
                 // 题库 / 日志 / 云端同步 是低频配置项,收进「高级」子页,

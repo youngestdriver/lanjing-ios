@@ -90,7 +90,7 @@ On iOS 26 and later, the system-provided `TabView` automatically uses Apple's Li
 
 The quiz flow includes question paging, keyboard navigation on iPad, answer reporting, an answer-card sheet, question marking, and result parsing. The result page returns to the Exam List tab.
 
-Answer sound effects play in the exam and practice flows — a correct/wrong verdict on grading, plus the exam's per-question 60 s countdown expiring. All playback goes through the swappable `SoundPlayer` (currently iOS system sounds, standing in until bundled audio assets land), and the 我的 > 答题设置 switch turns them off (default on).
+Answer sound effects play in the exam and practice flows — a correct/wrong verdict on grading, plus the exam's per-question 60 s countdown expiring. Grading and countdown playback goes through `SoundPlayer`, which plays the user's imported custom file when one is installed and otherwise falls back to iOS system prompt sounds; the 我的 > 答题设置 switch turns them off (default on). The per-slot preview buttons play directly and bypass that switch by design.
 
 ### Abandoning An Exam
 

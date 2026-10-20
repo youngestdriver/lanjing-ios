@@ -77,6 +77,7 @@ struct SoundTrimView: View {
                     Text("音频最长 5 秒，保存后会替换当前\(slotTitle)音效。")
                 }
             }
+            .disabled(isExporting)
             .navigationTitle("截取音频")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -134,6 +135,7 @@ struct SoundTrimView: View {
     }
 
     private func save() async {
+        guard !isExporting else { return }
         isExporting = true
         defer { isExporting = false }
         previewer?.stop()
@@ -141,7 +143,12 @@ struct SoundTrimView: View {
         do {
             let clipURL = try await SoundClipExporter.export(from: sourceURL, range: range)
             defer { try? FileManager.default.removeItem(at: clipURL) }
-            try store.install(from: clipURL, for: slot)
+            do {
+                try store.install(from: clipURL, for: slot)
+            } catch {
+                errorMessage = "保存失败：\(error.localizedDescription)"
+                return
+            }
             onSaved()
             dismiss()
         } catch {
@@ -166,7 +173,7 @@ private final class TrimPreviewer {
 
     func play(url: URL, from start: TimeInterval, duration: TimeInterval) -> Bool {
         stop()
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setCategory(.ambient)
         guard let player = try? AVAudioPlayer(contentsOf: url) else { return false }
         player.currentTime = start
         guard player.play() else { return false }
@@ -175,7 +182,7 @@ private final class TrimPreviewer {
         stopTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(duration))
             guard !Task.isCancelled else { return }
-            await self?.stop()
+            self?.stop()
         }
         return true
     }

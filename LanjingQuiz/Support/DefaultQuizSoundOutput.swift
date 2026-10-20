@@ -32,8 +32,12 @@ final class AVAudioPlayerSoundFile: SoundFilePlaying {
 
     private func configureSessionIfNeeded() {
         guard !didConfigureSession else { return }
-        didConfigureSession = true
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient)
+            didConfigureSession = true
+        } catch {
+            // 下次播放再试；保持默认类别也比崩溃好。
+        }
     }
 }
 
@@ -71,6 +75,11 @@ final class DefaultQuizSoundOutput {
     /// 设置页试听：显式操作，不看「答题音效」开关。
     func preview(_ slot: SoundSlot) {
         play(slot == .correct ? .correct : .wrong)
+    }
+
+    /// 停止当前自定义片段（离开试听页时调用）。
+    func stop() {
+        filePlayer.stop()
     }
 
     private func playSlot(_ slot: SoundSlot, systemID: SystemSoundID) {
