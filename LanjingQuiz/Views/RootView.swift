@@ -106,6 +106,13 @@ private struct ProfileView: View {
         )
     }
 
+    private var soundBinding: Binding<Bool> {
+        Binding(
+            get: { appState.soundEnabled },
+            set: { appState.soundEnabled = $0 }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -150,6 +157,20 @@ private struct ProfileView: View {
                 Section("答题设置") {
                     Toggle(isOn: autoAdvanceBinding) {
                         Label("答对后自动下一题", systemImage: "arrow.right.square")
+                    }
+                    Toggle(isOn: soundBinding) {
+                        Label("答题音效", systemImage: "speaker.wave.2")
+                    }
+                    .accessibilityIdentifier("sound-effects-toggle")
+                    NavigationLink {
+                        CustomSoundView(slot: .correct)
+                    } label: {
+                        SoundStatusRow(title: "答对音效", slot: .correct)
+                    }
+                    NavigationLink {
+                        CustomSoundView(slot: .wrong)
+                    } label: {
+                        SoundStatusRow(title: "答错音效", slot: .wrong)
                     }
                 }
 
