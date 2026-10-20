@@ -347,6 +347,8 @@ struct PracticeQuizView: View {
                 dismiss()
             }
             .buttonStyle(ActionButtonStyle(color: DS.accent, radius: DS.radiusSM))
+            // 完成页不拉满屏宽:320pt 居中,和上方统计块形成收束感。
+            .frame(maxWidth: 320)
             // 完成页入口(设计稿 §3.3):先收场——endSession 清掉已完成的存档、
             // dismiss 把练习页从导航栈里弹出(回到练习 tab 时停在题型列表,
             // 而不是一场已收掉的完成页),再走 AppState.select 收口切到错题本。
@@ -356,6 +358,7 @@ struct PracticeQuizView: View {
                 appState.select(.wrongBook)
             }
             .buttonStyle(ActionButtonStyle(color: DS.blue, radius: DS.radiusSM))
+            .frame(maxWidth: 320)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
