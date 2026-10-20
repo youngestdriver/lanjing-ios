@@ -102,4 +102,30 @@ final class DefaultQuizSoundOutputTests: XCTestCase {
         XCTAssertEqual(player.calls, ["stop", "play:custom-wrong.m4a"])
         XCTAssertTrue(systems.isEmpty)
     }
+
+    /// 端到端数据路径：真实文件槽位安装后，output 必须直接播它而不是系统音。
+    func testInstalledSlotFileIsPlayedByOutput() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "DefaultQuizSoundOutputTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = FileManagerCustomSoundStore(directory: dir)
+        let source = dir.appending(path: "source.m4a")
+        try Data([1, 2, 3]).write(to: source)
+        try store.install(from: source, for: .correct)
+
+        let localPlayer = SpyFilePlayer()
+        var playedSystems: [SystemSoundID] = []
+        let output = DefaultQuizSoundOutput(
+            store: store,
+            filePlayer: localPlayer,
+            playSystem: { playedSystems.append($0) }
+        )
+
+        output.play(.correct)
+
+        XCTAssertEqual(localPlayer.calls, ["stop", "play:correct.m4a"])
+        XCTAssertTrue(playedSystems.isEmpty)
+    }
 }
