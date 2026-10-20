@@ -77,6 +77,18 @@ xcodebuild -project LanjingQuiz.xcodeproj -scheme LanjingQuiz -showdestinations
 
 Bank packages (`LanjingQuiz-bank-*.zip`) are distributed from the main repo's release page, [`youngestdriver/lanjing_test`](https://github.com/youngestdriver/lanjing_test/releases); this repo does not publish them.
 
+## Releasing (local)
+
+GitHub Actions is no longer used for releases. Build the unsigned IPA locally and upload it to a GitHub Release:
+
+```sh
+./scripts/release-unsigned.sh                    # auto-increment the latest vX.Y.Z tag
+./scripts/release-unsigned.sh --version v1.0.8   # explicit version
+./scripts/release-unsigned.sh --no-upload        # build + package only
+```
+
+The script runs `xcodebuild` (Release, iphoneos, unsigned) with the local Xcode, writes `build/unsigned-dd/assets/LanjingQuiz-unsigned-<version>.ipa` plus install notes, and uses `gh release create` / `gh release upload` (requires `gh auth login`). Use Xcode 26 or later to include the iOS 26 Liquid Glass button style; older toolchains build the keycap fallback.
+
 ## User Flow
 
 After sign-in, the root screen has four native tabs. The default visible set is **练习 / 错题本 / 我的**: **Exam List is hidden by default** (an exam can only be started while its tab is visible). Re-enable a single tab, or restore the default set, in 我的 > 高级 > 标签栏:
@@ -112,6 +124,7 @@ lanjing-ios/                     Repository root
 │   └── Views/                   SwiftUI screens and reusable view components
 ├── LanjingQuizTests/            Unit tests and fixtures
 ├── LanjingQuizUITests/          UI tests with an in-process mock upstream
+├── scripts/                     Local release/build helpers
 └── project.yml                  XcodeGen project definition
 ```
 
