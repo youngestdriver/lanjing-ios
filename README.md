@@ -77,9 +77,11 @@ xcodebuild -project LanjingQuiz.xcodeproj -scheme LanjingQuiz -showdestinations
 
 Bank packages (`LanjingQuiz-bank-*.zip`) are distributed from the main repo's release page, [`youngestdriver/lanjing_test`](https://github.com/youngestdriver/lanjing_test/releases); this repo does not publish them.
 
-## Releasing (local)
+## Releasing
 
-GitHub Actions is no longer used for releases. Build the unsigned IPA locally and upload it to a GitHub Release:
+Pushing to `main` builds the unsigned IPA on GitHub Actions and publishes a GitHub Release. The workflow runs on `macos-26` (Xcode 26+) so the iOS 26 Liquid Glass branch compiles.
+
+To build and upload locally instead (manual fallback):
 
 ```sh
 ./scripts/release-unsigned.sh                    # auto-increment the latest vX.Y.Z tag
@@ -87,7 +89,7 @@ GitHub Actions is no longer used for releases. Build the unsigned IPA locally an
 ./scripts/release-unsigned.sh --no-upload        # build + package only
 ```
 
-The script runs `xcodebuild` (Release, iphoneos, unsigned) with the local Xcode, writes `build/unsigned-dd/assets/LanjingQuiz-unsigned-<version>.ipa` plus install notes, and uses `gh release create` / `gh release upload` (requires `gh auth login`). Use Xcode 26 or later to include the iOS 26 Liquid Glass button style; older toolchains build the keycap fallback.
+The script runs `xcodebuild` (Release, iphoneos, unsigned) with the local Xcode, writes `build/unsigned-dd/assets/LanjingQuiz-unsigned-<version>.ipa` plus install notes, and uses `gh release create` / `gh release upload` (requires `gh auth login`).
 
 ## User Flow
 
